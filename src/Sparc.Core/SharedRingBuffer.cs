@@ -130,12 +130,19 @@ public sealed class SharedRingBuffer : IRingBuffer, IDisposable
     /// when the role is already claimed by a live instance; pass
     /// <paramref name="takeover"/> to reclaim it from a crashed peer.
     /// </summary>
-    public void Connect(RingBufferEndpointRole role, bool takeover = false)
+    /// <param name="role">Role to claim: producer or consumer.</param>
+    /// <param name="takeover">When true, reclaim the role from a crashed peer.</param>
+    /// <param name="cancellationToken">
+    /// Bounds the CAS retry loop; pass <see cref="CancellationToken.None"/> to
+    /// retry indefinitely.
+    /// </param>
+    public void Connect(RingBufferEndpointRole role, bool takeover = false, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             RingBufferEndpointState current = _region.ReadEndpointState(role);
 
             if (!takeover && current is RingBufferEndpointState.Starting or RingBufferEndpointState.Running)

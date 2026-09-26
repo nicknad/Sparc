@@ -177,18 +177,34 @@ public class SpscRingBufferTests
         byte[] payload = new byte[4];
         Span<byte> destination = new byte[buffer.MaxPayloadSize];
 
-        buffer.Write(payload, 1);
-        buffer.Write(payload, 2);
+        buffer.Write(payload, 1, TestContext.Current.CancellationToken);
+        buffer.Write(payload, 2, TestContext.Current.CancellationToken);
         Assert.False(buffer.TryWrite(0, payload));
 
         Assert.True(buffer.TryRead(destination, out _, out int first));
         Assert.Equal(1, first);
 
-        buffer.Write(payload, 3); // slot freed above, must not block
+        buffer.Write(payload, 3, TestContext.Current.CancellationToken); // slot freed above, must not block
 
         Assert.True(buffer.TryRead(destination, out _, out int second));
         Assert.True(buffer.TryRead(destination, out _, out int third));
         Assert.Equal(2, second);
         Assert.Equal(3, third);
+    }
+
+    [Fact]
+    public void BlockingWriteHonorsCancellationWhileFull()
+    {
+        SpscRingBuffer buffer = new(2, 32);
+        byte[] payload = new byte[4];
+        buffer.Write(payload, 1, TestContext.Current.CancellationToken);
+        buffer.Write(payload, 2, TestContext.Current.CancellationToken);
+
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(
+            () => buffer.Write(payload, 3, cancellation.Token));
+        Assert.Equal(2, buffer.Count);
     }
 }

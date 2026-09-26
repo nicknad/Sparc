@@ -40,7 +40,17 @@ public sealed class ConsumerSession
         CancellationToken cancellationToken = default,
         IProgress<ConsumerProgress>? progress = null)
     {
-        _buffer.Connect(RingBufferEndpointRole.Consumer, _options.Takeover);
+        try
+        {
+            _buffer.Connect(RingBufferEndpointRole.Consumer, _options.Takeover, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Sessions report cancellation as a structured result, never as an
+            // exception (the role was not claimed).
+            return new ConsumerRunResult(
+                0, 0, TimeSpan.Zero, SessionStopReason.Cancelled, new LatencyHistogram(), null);
+        }
 
         byte[] destination = new byte[_buffer.MaxPayloadSize];
         LatencyHistogram histogram = new();

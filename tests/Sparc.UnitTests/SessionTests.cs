@@ -77,7 +77,7 @@ public class SessionTests
         using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
 
         SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
-        consumerBuffer.Connect(RingBufferEndpointRole.Consumer);
+        consumerBuffer.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
         consumerBuffer.Dispose();
 
         ProducerRunResult result = new ProducerSession(producerBuffer, new ProducerSessionOptions
@@ -99,7 +99,7 @@ public class SessionTests
         string name = NewName();
         using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
         using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
-        producerBuffer.Connect(RingBufferEndpointRole.Producer);
+        producerBuffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
 
         byte[] payload = new byte[32];
         RingBufferMessage.Write(payload, sequence: 5, Stopwatch.GetTimestamp());
@@ -123,7 +123,7 @@ public class SessionTests
         string name = NewName();
         using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
 
-        producerBuffer.Connect(RingBufferEndpointRole.Producer);
+        producerBuffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
         byte[] payload = new byte[24];
         RingBufferMessage.FillPayload(payload);
         for (int sequence = 0; sequence < 5; sequence++)
@@ -152,7 +152,7 @@ public class SessionTests
         InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
         using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
-        producerBuffer.Connect(RingBufferEndpointRole.Producer);
+        producerBuffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
 
         using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
         ConsumerRunResult result = new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
@@ -172,7 +172,7 @@ public class SessionTests
         InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
         using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
-        producerBuffer.Connect(RingBufferEndpointRole.Producer);
+        producerBuffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
 
         using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
         using CancellationTokenSource cancellation = new();

@@ -189,14 +189,22 @@ public sealed class SpscRingBuffer : IRingBuffer
     }
 
     /// <summary>
-    /// Blocking convenience wrapper: spins until the message fits. For latency
-    /// sensitive callers prefer <see cref="TryWrite(int, ReadOnlySpan{byte})"/>.
+    /// Blocking convenience wrapper: spins until the message fits or the caller
+    /// cancels. For latency sensitive callers prefer
+    /// <see cref="TryWrite(int, ReadOnlySpan{byte})"/>.
     /// </summary>
-    public void Write(ReadOnlySpan<byte> payload, int type = 0)
+    /// <param name="payload">Payload bytes to copy into the next slot.</param>
+    /// <param name="type">Caller-defined message tag.</param>
+    /// <param name="cancellationToken">
+    /// Bounds the wait; observed only while the buffer stays full. Pass
+    /// <see cref="CancellationToken.None"/> to wait indefinitely.
+    /// </param>
+    public void Write(ReadOnlySpan<byte> payload, int type = 0, CancellationToken cancellationToken = default)
     {
         SpinWait spin = new();
         while (!TryWrite(type, payload))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             spin.SpinOnce();
         }
     }

@@ -16,8 +16,8 @@ public class SharedRingBufferTests
         using SharedRingBuffer producer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
         using SharedRingBuffer consumer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
 
-        producer.Connect(RingBufferEndpointRole.Producer);
-        consumer.Connect(RingBufferEndpointRole.Consumer);
+        producer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+        consumer.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(4, producer.Capacity);
         Assert.Equal(consumer.Capacity, producer.Capacity);
@@ -66,8 +66,8 @@ public class SharedRingBufferTests
         using (SharedRingBuffer producer = new(region, ownsRegion: false))
         using (SharedRingBuffer firstConsumer = new(region, ownsRegion: false))
         {
-            producer.Connect(RingBufferEndpointRole.Producer);
-            firstConsumer.Connect(RingBufferEndpointRole.Consumer);
+            producer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+            firstConsumer.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
 
             byte[] payload = new byte[8];
             Span<byte> destination = new byte[firstConsumer.MaxPayloadSize];
@@ -89,7 +89,7 @@ public class SharedRingBufferTests
         // head == tail == 3, the previous consumer said goodbye; a fresh view
         // must not mistake the stale cached cursor for pending data.
         using SharedRingBuffer restarted = new(region, ownsRegion: false);
-        restarted.Connect(RingBufferEndpointRole.Consumer, takeover: true);
+        restarted.Connect(RingBufferEndpointRole.Consumer, takeover: true, cancellationToken: TestContext.Current.CancellationToken);
 
         Span<byte> buffer = new byte[restarted.MaxPayloadSize];
         Assert.False(restarted.TryRead(buffer, out _, out _));
@@ -103,12 +103,12 @@ public class SharedRingBufferTests
         using SharedRingBuffer first = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
         using SharedRingBuffer second = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
 
-        first.Connect(RingBufferEndpointRole.Producer);
+        first.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Throws<RingBufferRoleConflictException>(
-            () => second.Connect(RingBufferEndpointRole.Producer));
+            () => second.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken));
 
-        second.Connect(RingBufferEndpointRole.Producer, takeover: true);
+        second.Connect(RingBufferEndpointRole.Producer, takeover: true, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(RingBufferEndpointState.Running, second.ProducerState);
     }
 
@@ -120,12 +120,12 @@ public class SharedRingBufferTests
         using SharedRingBuffer stateReader = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
 
         SharedRingBuffer producer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
-        producer.Connect(RingBufferEndpointRole.Producer);
+        producer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
         producer.Dispose();
         Assert.Equal(RingBufferEndpointState.Stopped, stateReader.ProducerState);
 
         SharedRingBuffer aborted = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
-        aborted.Connect(RingBufferEndpointRole.Consumer);
+        aborted.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
         aborted.Abort();
         aborted.Dispose();
         Assert.Equal(RingBufferEndpointState.Faulted, stateReader.ConsumerState);
@@ -138,7 +138,7 @@ public class SharedRingBufferTests
         string name = NewName();
         using RingBufferRegion region = RingBufferRegion.CreateOrOpen(factory, name, 4, 64);
         SharedRingBuffer buffer = new(region, ownsRegion: false);
-        buffer.Connect(RingBufferEndpointRole.Producer);
+        buffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
         buffer.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() => buffer.TryWrite(0, new byte[4]));
@@ -151,9 +151,24 @@ public class SharedRingBufferTests
         InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
         using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
-        buffer.Connect(RingBufferEndpointRole.Producer);
+        buffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Throws<ArgumentOutOfRangeException>(() => buffer.TryWrite(0, new byte[buffer.MaxPayloadSize + 1]));
+    }
+
+    [Fact]
+    public void ConnectHonorsCancellation()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+
+        using CancellationTokenSource cancellation = new();
+        cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(
+            () => buffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: cancellation.Token));
+        Assert.Equal(RingBufferEndpointState.NotPresent, buffer.ProducerState);
     }
 
     [Fact]

@@ -40,7 +40,18 @@ public sealed class ProducerSession
         CancellationToken cancellationToken = default,
         IProgress<ProducerProgress>? progress = null)
     {
-        _buffer.Connect(RingBufferEndpointRole.Producer, _options.Takeover);
+        try
+        {
+            _buffer.Connect(RingBufferEndpointRole.Producer, _options.Takeover, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Sessions report cancellation as a structured result, never as an
+            // exception (the role was not claimed).
+            return new ProducerRunResult(
+                0, _options.PayloadSize, TimeSpan.Zero, SessionStopReason.Cancelled,
+                _options.Count, _buffer.ConsumerState, null);
+        }
 
         byte[] payload = new byte[_options.PayloadSize];
         RingBufferMessage.FillPayload(payload);

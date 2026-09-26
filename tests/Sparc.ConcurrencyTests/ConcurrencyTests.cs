@@ -77,8 +77,8 @@ public class SharedRingBufferConcurrencyTests(ITestOutputHelper output)
         using SharedRingBuffer producerView = SharedRingBuffer.OpenOrCreate(factory, name, 1024, 256);
         using SharedRingBuffer consumerView = SharedRingBuffer.OpenOrCreate(factory, name, 1024, 256);
 
-        producerView.Connect(RingBufferEndpointRole.Producer);
-        consumerView.Connect(RingBufferEndpointRole.Consumer);
+        producerView.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+        consumerView.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
 
         TransferRunner.Result result = TransferRunner.Run(
             producerView, consumerView, Total, payloadSize: 64, Timeout);
