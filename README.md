@@ -1,16 +1,18 @@
 # Cross-Process SPSC Lock-Free Ring Buffer (.NET)
 
-A single-producer / single-consumer lock-free ring buffer in C#, backed by a named
-`MemoryMappedFile`, letting **two independent processes exchange fixed-size messages
-through the same physical memory without locks**.
+A single-producer / single-consumer lock-free ring buffer in C#, with an
+operating-system abstraction and a reusable session layer, letting **two
+independent processes exchange fixed-size messages through the same physical
+memory without locks**.
 
 ```
 Producer process                          Consumer process
       │                                         │
-      │ TryWrite(payload)                       │ TryRead(destination)
+      │ ProducerSession.Run()                   │ ConsumerSession.Run()
       ▼                                         ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                    MemoryMappedFile "mybuffer"               │
+│              IIpcMemoryRegionFactory (per-OS transport)      │
+│                      │  shared region                        │
 │  [header][slot 0][slot 1][slot 2] … [slot N-1]               │
 │              ▲                     ▲                         │
 │            head                  tail                        │
@@ -19,12 +21,16 @@ Producer process                          Consumer process
 
 * exactly one producer and one consumer (SPSC)
 * no mutexes, no OS synchronization, no CAS on the data path
-* fixed-size slots, bounded memory
-* zero allocations after initialization
+* fixed-size slots, bounded memory, zero allocations after initialization
 * `Volatile` acquire/release ordering (works on x86-64 and ARM64, not just "x86 is strong")
+* OS-specific mapping isolated behind `IIpcMemoryRegionFactory`
+* reusable sessions for CLIs, web apps and worker services (`TimeProvider`,
+  `CancellationToken`, `ILogger`, structured results — no console coupling)
 * explicit, documented crash semantics
 
-Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in `global.json`).
+Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in
+`global.json`). Libraries multi-target **`net8.0;net11.0`**; apps/tests target
+`net11.0`.
 
 ---
 
@@ -33,21 +39,38 @@ Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in `
 ```
 SpscRingBuffer.slnx
 ├── src/
-│   ├── RingBuffer.Core/            SpscRingBuffer (managed-array version), layout, header, framing
-│   ├── RingBuffer.SharedMemory/    SharedMemoryRegion + SharedRingBuffer (mapped-memory version)
-│   ├── RingBuffer.Producer/        producer CLI
-│   └── RingBuffer.Consumer/        consumer CLI
+│   ├── Ipc.Abstractions/           IIpcMemoryRegionFactory / IIpcMemoryRegion, options, exceptions
+│   ├── Ipc.WindowsMemoryMapped/    Windows named memory-mapped implementation + DI registration
+│   ├── RingBuffer.Core/            ring protocol: layout/header/framing, SpscRingBuffer, SharedRingBuffer
+│   ├── RingBuffer.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
+│   ├── RingBuffer.Producer/        producer CLI (args → session → summary → exit code)
+│   └── RingBuffer.Consumer/        consumer CLI (args → session → summary → exit code)
 ├── tests/
-│   ├── RingBuffer.UnitTests/       correctness tests
+│   ├── RingBuffer.UnitTests/       algorithm, region protocol, sessions (in-memory region factory)
 │   ├── RingBuffer.ConcurrencyTests/ 2 × 10,000,000 message two-thread verification
 │   └── RingBuffer.ProcessTests/    two real processes: lifecycle, conflicts, kill tests
 └── benchmarks/
     └── RingBuffer.Benchmarks/      BenchmarkDotNet throughput suite + custom latency harness
 ```
 
+Dependency graph (arrows = project reference):
+
+```
+Ipc.Abstractions
+      ▲
+RingBuffer.Core
+      ▲            ▲
+RingBuffer.Client  Ipc.WindowsMemoryMapped
+      ▲                   ▲
+RingBuffer.Producer / RingBuffer.Consumer (CLI hosts)
+```
+
+`Ipc.WindowsMemoryMapped` does not reference `RingBuffer.Core`; the ring protocol
+does not reference any OS type.
+
 ---
 
-## Quick start
+## Quick start (CLI)
 
 ```powershell
 dotnet build SpscRingBuffer.slnx -c Release
@@ -80,9 +103,7 @@ latency(us): min=1.20 mean=122.44 p50=51.20 p95=204.80 p99=409.60 max=20480.00 (
 
 `--count 0` on the consumer means "consume until the producer stops".
 `--size` is the payload size; layout is `[sequence:int64][timestamp:int64][fill…]` (min 16 bytes).
-
-Valid region names are the same names accepted by `MemoryMappedFile.CreateNew`; prefix with
-`Global\` to share across Windows sessions.
+`Ctrl+C` cancels the session gracefully.
 
 ### Exit codes (both apps)
 
@@ -92,10 +113,80 @@ Valid region names are the same names accepted by `MemoryMappedFile.CreateNew`; 
 | 2 | timeout (region never appeared, or buffer stayed full too long) |
 | 3 | peer vanished / stream incomplete |
 | 4 | role conflict (another live instance owns the role) |
-| 5 | incompatible version or geometry |
+| 5 | incompatible version/geometry/platform |
 | 6 | corrupt / half-initialized region |
 | 7 | message verification failure |
 | 64 | usage error |
+
+---
+
+## Using the libraries
+
+Reference the projects (or packages once published) you need:
+
+| Library | Use when |
+|---|---|
+| `Ipc.Abstractions` | you only need the OS abstraction contracts |
+| `Ipc.WindowsMemoryMapped` | you run on Windows and want named memory-mapped regions (+ DI) |
+| `RingBuffer.Core` | you need the buffer (`SpscRingBuffer`, `SharedRingBuffer`) |
+| `RingBuffer.Client` | you need producer/consumer sessions and verification |
+
+### Web app / worker service / generic host
+
+```csharp
+using Ipc;
+using Ipc.WindowsMemoryMapped;
+using RingBuffer.Client;
+using RingBuffer.Core;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Chooses the OS transport once. Web app code never sees MemoryMappedFile.
+builder.Services.AddWindowsNamedMemoryMappedIpc();
+
+// e.g. builder.Services.AddHostedService<OrderProducerWorker>();
+```
+
+```csharp
+sealed class OrderProducerWorker(
+    IIpcMemoryRegionFactory factory,
+    ILogger<OrderProducerWorker> logger) : BackgroundService
+{
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) => Task.Run(() =>
+    {
+        using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(
+            factory, "orders", capacity: 1024, slotSize: 256,
+            new SharedRingBufferOptions { OpenTimeout = TimeSpan.FromSeconds(30) });
+
+        ProducerSession session = new(buffer, new ProducerSessionOptions
+        {
+            Count = 1_000_000,
+            PayloadSize = 64,
+        }, logger: logger);
+
+        ProducerRunResult result = session.Run(stoppingToken);
+        logger.LogInformation("Sent {Count} messages, stopped because {Reason}",
+            result.Produced, result.Reason);
+    }, stoppingToken);
+}
+```
+
+Sessions are intentionally **synchronous and blocking** (they spin on the lock-free
+buffer); hosts should invoke them on a background thread (`Task.Run`,
+`BackgroundService`). Cancellation is checked on the full/empty paths and
+periodically on the hot path.
+
+Structured outcomes replace console/exit-code decisions:
+
+```csharp
+ProducerRunResult  { Produced, PayloadSize, Elapsed, Reason, Unsent, PeerState, FailureMessage }
+ConsumerRunResult  { Received, ReceivedBytes, Elapsed, Reason, Latency, FailureMessage }
+SessionStopReason  { Completed, PeerStopped, Timeout, VerificationFailed, Cancelled }
+```
+
+Testability: pass a custom `TimeProvider` and/or `ILogger` into the sessions, and
+swap `IIpcMemoryRegionFactory` for the in-memory test double to run the whole
+stack without the OS (see `tests/RingBuffer.UnitTests/Support`).
 
 ---
 
@@ -231,15 +322,31 @@ Each slot:
 
 Region size is exactly `192 + Capacity × SlotSize` bytes (1024 × 256 → 262,336 bytes).
 
-### Initialization handshake
+### Initialization handshake and platform abstraction
 
-`MemoryMappedFile.CreateNew` either succeeds (we are the creator) or fails because the
-region already exists (we open it). The creator writes every header field **except the
-magic**, then publishes the magic with a release store. An opener polls the magic with an
-acquire load and only then reads the geometry — so it can never observe a half-written
-header. Openers also validate the version, geometry and declared size, and produce
-specific exceptions (`RingBufferVersionMismatchException`,
-`RingBufferGeometryMismatchException`, `RingBufferCorruptedException`).
+`SharedRingBuffer.OpenOrCreate(factory, …)` asks the factory for the region and then
+performs the protocol handshake in `RingBufferRegion`:
+
+* `factory.CreateOrOpen(name, size, options)` either creates a region or joins the
+  existing one. On Windows this is `MemoryMappedFile.CreateNew` / `OpenExisting`; the
+  factory retries until `IpcRegionOptions.OpenTimeout` elapses.
+* The creator writes every header field **except the magic**, then publishes the magic
+  with a release store. An opener polls the magic with an acquire load and only then
+  reads the geometry, so it can never observe a half-written header.
+* Openers validate version, geometry and declared size, producing specific exceptions
+  (`RingBufferVersionMismatchException`, `RingBufferGeometryMismatchException`,
+  `RingBufferCorruptedException`).
+* Stale-region recovery is split: `RingBufferRegion` detects the bad magic, the factory
+  reclaims the backing store (`TryReset`), and the ring layer retries once (only when
+  `RecreateIfStale` is set).
+
+**Platform note.** .NET supports named memory-mapped files on **Windows only**
+(`MemoryMappedFile.CreateNew(name, …)` / `OpenExisting(name)` throw
+`PlatformNotSupportedException` on Unix). `WindowsNamedMemoryMappedRegionFactory`
+checks this and fails with a clear `IpcPlatformNotSupportedException`. A Unix
+implementation would provide a file-backed `IIpcMemoryRegionFactory`
+(`MemoryMappedFile.CreateFromFile` + unlink on `TryReset`); nothing above the
+abstraction changes.
 
 ---
 
@@ -254,19 +361,13 @@ deliberately explicit:
 | Producer starts first | Same, mirrored. The producer simply fills the buffer and spins until the consumer appears. |
 | Region missing | First process creates it; geometry is fixed by whoever creates it (the consumer adopts existing geometry when joining). |
 | Second producer/consumer starts | `Connect(role)` CASes the role state; a live `Starting`/`Running` peer causes exit code 4. `--takeover` forcibly reclaims a role. |
-| Stale/half-initialized region | Bad magic after `--open-timeout` → exit 6, unless `--recreate-stale` is given: drop handles, recreate. On Windows a named map dies with its last handle, so a dead creator leaves nothing behind. |
+| Stale/half-initialized region | Bad magic after `--open-timeout` → exit 6, unless `--recreate-stale` is given: drop handles, reclaim, create again. On Windows a named map dies with its last handle, so a dead creator leaves nothing behind. |
 | Incompatible version/geometry | Exit 5 with a message naming the mismatch. |
 | **Producer killed mid-run** | Unpublished slot writes are invisible (tail is only published after the full slot write). Messages already published stay valid. The consumer blocks on empty, detects the idle timeout and exits 3. The producer's `ProducerState` remains `Running` forever — a hard kill cannot update it, and no heartbeat is implemented (see scope). |
 | **Consumer killed mid-run** | The producer eventually fills the buffer and exits 2 after `--full-timeout`. If a consumer died gracefully it sets `Stopped`, which the producer treats as "consumer gone" (exit 3) when it observes it. |
 | Consumer crash during a read | The payload copy happens **before** the release store of `head`. A crash in between leaves `head` unmoved → the message is **redelivered after restart**. Delivery is therefore **at-least-once across consumer crashes**, never torn and never lost. |
-| Producer restart | A restarted producer appends at the existing `tail`; the sample app's sequence numbers restart at 0, so run with `--no-verify` or a fresh name if you resume an old region. |
+| Producer restart | A restarted producer appends at the existing `tail`; the sample protocol's sequence numbers restart at 0, so run with `--no-verify` or a fresh name if you resume an old region. |
 | Endpoint state | `NotPresent → Starting → Running → Stopped/Faulted` is advisory: it enables fast graceful-shutdown detection and role-conflict rejection, but a hard kill leaves `Running`. Liveness detection would need heartbeats, which are out of scope. |
-
-**Platform note.** .NET named memory-mapped files are **Windows-only**
-(`MemoryMappedFile.CreateNew(name, …)` / `OpenExisting(name)` throw
-`PlatformNotSupportedException` on Unix). `SharedMemoryRegion` checks this and fails with
-a clear message; a file-backed map created with `MemoryMappedFile.CreateFromFile` would be
-the Unix equivalent and the rest of the design is unchanged.
 
 ---
 
@@ -276,10 +377,13 @@ the Unix equivalent and the rest of the design is unchanged.
 dotnet test SpscRingBuffer.slnx -c Release        # .NET 11 SDK + Microsoft.Testing.Platform (xunit v3)
 ```
 
-* **UnitTests (40+ tests).** Empty/one/full/wraparound, arbitrary bytes, zero-length and
-  maximum-sized payloads, 200k randomized operations against a `Queue<byte[]>` oracle,
-  header/layout validation, region creation, version/geometry/corruption detection,
-  role conflicts and takeover, endpoint states, histogram math.
+* **UnitTests.** Empty/one/full/wraparound, arbitrary bytes, zero-length and maximum-sized
+  payloads, 200k randomized operations against a `Queue<byte[]>` oracle, header/layout
+  validation, region creation/join/version/geometry/corruption, role conflicts and
+  takeover, endpoint states, histogram math, and session semantics
+  (completion, timeouts, peer-stopped drain, verification failure, cancellation). Region
+  protocol tests run against an in-memory `IIpcMemoryRegionFactory`, so they are
+  OS-independent; Windows factory tests are guarded by `OperatingSystem.IsWindows()`.
 * **ConcurrencyTests.** Two threads, **10,000,000 messages each**, sequence + checksum +
   fill-byte verification on every message, for both the in-process array buffer and the
   shared-memory buffer (two views of one region). A tiny-capacity (2-slot) torture test and
@@ -350,7 +454,8 @@ Caveats worth knowing before quoting any of this:
 
 Not implemented (deliberately): MPSC/MPMC, dynamic resizing, variable-sized records,
 persistence, networking, compression, encryption, multiple consumers/producers, heartbeats
-or automatic crash detection, and Unix file-backed regions.
+or automatic crash detection, and Unix file-backed regions (only the abstraction and the
+Windows implementation exist today; an in-memory factory ships in the test project).
 
 The learning objective is the one this project exercises end to end:
 
@@ -358,4 +463,5 @@ The learning objective is the one this project exercises end to end:
 > atomic state transitions and memory-ordering guarantees.**
 
 Concepts covered: cache coherence, false sharing, acquire/release ordering, lock-free
-algorithms, memory mapping, process isolation, binary memory layouts, and crash semantics.
+algorithms, memory mapping, process isolation, binary memory layouts, crash semantics,
+OS abstraction behind interfaces, and reusable session design for multiple host types.

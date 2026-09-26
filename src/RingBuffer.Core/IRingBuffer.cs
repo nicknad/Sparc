@@ -10,8 +10,8 @@ namespace RingBuffer.Core;
 /// <see cref="MaxPayloadSize"/> bytes; larger payloads are rejected.
 /// </para>
 /// <para>
-/// <b>Threading contract:</b> exactly one thread may call <see cref="TryWrite"/>
-/// and exactly one (different) thread may call <see cref="TryRead"/> for the
+/// <b>Threading contract:</b> exactly one thread may call <see cref="TryWrite(int, ReadOnlySpan{byte})"/>
+/// and exactly one (different) thread may call <see cref="TryRead(Span{byte}, out int, out int)"/> for the
 /// lifetime of the buffer. That guarantee is what makes the algorithm wait-free
 /// on the producer side: no compare-and-swap is needed because each sequence
 /// counter has a single writer.

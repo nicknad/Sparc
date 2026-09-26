@@ -5,6 +5,9 @@
     <RootNamespace>RingBuffer.Core</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Description>Lock-free single-producer/single-consumer ring buffer with explicit acquire/release ordering: a managed-array implementation and a cross-process implementation over IIpcMemoryRegion.</Description>
   </PropertyGroup>
 
   <ItemGroup>

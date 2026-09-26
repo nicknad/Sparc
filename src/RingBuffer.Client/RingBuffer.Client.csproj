@@ -4,6 +4,9 @@
     <TargetFrameworks>net8.0;net11.0</TargetFrameworks>
     <RootNamespace>RingBuffer.Client</RootNamespace>
     <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Description>Reusable producer/consumer sessions for the SPSC ring buffer: message framing, sequence/corruption verification, timeouts, structured stop reasons and one-way latency diagnostics. No console or process coupling.</Description>
   </PropertyGroup>
 
   <ItemGroup>

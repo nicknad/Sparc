@@ -10,7 +10,7 @@ public class SessionTests
     private static string NewName() => "spsc-session-" + Guid.NewGuid().ToString("N");
 
     [Fact]
-    public void ProducerAndConsumerCompleteTogether()
+    public async Task ProducerAndConsumerCompleteTogether()
     {
         InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
@@ -23,16 +23,18 @@ public class SessionTests
             IdleTimeout = TimeSpan.FromSeconds(10),
         });
 
-        Task<ConsumerRunResult> consumerTask = Task.Run(() => consumer.Run());
+        Task<ConsumerRunResult> consumerTask = Task.Run(
+            () => consumer.Run(TestContext.Current.CancellationToken),
+            TestContext.Current.CancellationToken);
 
         ProducerRunResult producerResult = new ProducerSession(producerBuffer, new ProducerSessionOptions
         {
             Count = 10_000,
             PayloadSize = 32,
             FullTimeout = TimeSpan.FromSeconds(10),
-        }).Run();
+        }).Run(TestContext.Current.CancellationToken);
 
-        ConsumerRunResult consumerResult = consumerTask.GetAwaiter().GetResult();
+        ConsumerRunResult consumerResult = await consumerTask;
 
         Assert.Equal(SessionStopReason.Completed, producerResult.Reason);
         Assert.Equal(10_000, producerResult.Produced);
@@ -58,7 +60,7 @@ public class SessionTests
             Count = 100,
             PayloadSize = 32,
             FullTimeout = TimeSpan.FromMilliseconds(100),
-        }).Run();
+        }).Run(TestContext.Current.CancellationToken);
 
         Assert.Equal(SessionStopReason.Timeout, result.Reason);
         Assert.Equal(4, result.Produced);
@@ -83,7 +85,7 @@ public class SessionTests
             Count = 100,
             PayloadSize = 32,
             FullTimeout = TimeSpan.FromMilliseconds(100),
-        }).Run();
+        }).Run(TestContext.Current.CancellationToken);
 
         Assert.Equal(SessionStopReason.PeerStopped, result.Reason);
         Assert.Equal(RingBufferEndpointState.Stopped, result.PeerState);
@@ -107,7 +109,7 @@ public class SessionTests
         ConsumerRunResult result = new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
         {
             IdleTimeout = TimeSpan.FromMilliseconds(200),
-        }).Run();
+        }).Run(TestContext.Current.CancellationToken);
 
         Assert.Equal(SessionStopReason.VerificationFailed, result.Reason);
         Assert.Contains("sequence mismatch", result.FailureMessage, StringComparison.Ordinal);
@@ -137,7 +139,7 @@ public class SessionTests
         {
             Count = 0,
             IdleTimeout = TimeSpan.FromSeconds(5),
-        }).Run();
+        }).Run(TestContext.Current.CancellationToken);
 
         Assert.Equal(SessionStopReason.Completed, result.Reason);
         Assert.Equal(5, result.Received);
@@ -157,7 +159,7 @@ public class SessionTests
         {
             Count = 0,
             IdleTimeout = TimeSpan.FromMilliseconds(150),
-        }).Run();
+        }).Run(TestContext.Current.CancellationToken);
 
         Assert.Equal(SessionStopReason.Timeout, result.Reason);
         Assert.Equal(0, result.Received);
