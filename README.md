@@ -499,24 +499,26 @@ Transports compared: `SpscRingBuffer` (managed array), `SharedRingBuffer`
 runs two dedicated threads pumping `Batch = 65,536` messages per measured invocation.
 
 Example run on this machine (Windows 11 VM, i7-1260P, BDN 0.16 preview, .NET 11 RC1,
-`IterationCount=3 WarmupCount=1`; captured before the SPARC rename and the
-safety-hardening commits, which do not touch the measured per-message paths; **wide
-confidence intervals — treat as directional**):
+`IterationCount=3 WarmupCount=1`, captured after the SPARC rename and the
+safety-hardening commits; the VM was shared with light background load during the run,
+so **confidence intervals are wide — treat as directional**):
 
 | Transport | 16 B | 64 B | 256 B | 1 KB | 4 KB | Alloc/op @64 B |
 |---|---:|---:|---:|---:|---:|---:|
-| SPSC array | 1,068 ns | 1,660 ns | 938 ns | 1,027 ns | 648 ns | 0 |
-| SPSC shared memory | **375 ns** | **735 ns** | **451 ns** | **783 ns** | **252 ns** | 0 |
-| lock + Queue | 664 ns | 1,062 ns | 1,475 ns | 4,673 ns | 9,152 ns | 88 B |
-| `Channel<T>` | 946 ns | 1,351 ns | 698 ns | 1,227 ns | 605 ns | 88 B |
-| Named pipe | 16.4 µs | 14.6 µs | 13.7 µs | 14.1 µs | 17.5 µs | 0 |
-| TCP loopback | 27.7 µs | 28.9 µs | 25.5 µs | 26.6 µs | 27.2 µs | 0 |
+| SPSC array | 970 ns | 734 ns | 1,069 ns | 658 ns | 893 ns | 0 |
+| SPSC shared memory | **686 ns** | **520 ns** | **457 ns** | **241 ns** | **578 ns** | 0 |
+| lock + Queue | 3,161 ns | 2,578 ns | 4,145 ns | 3,007 ns | 11,582 ns | 88 B |
+| `Channel<T>` | 2,425 ns | 1,626 ns | 2,030 ns | 2,214 ns | 2,615 ns | 88 B |
+| Named pipe | 40.9 µs | 30.8 µs | 30.7 µs | 37.7 µs | 35.5 µs | 0 |
+| TCP loopback | 53.9 µs | 44.7 µs | 74.8 µs | 48.3 µs | 45.4 µs | 0 |
 
-Cross-process latency (producer + consumer executables, 500k × 64 B):
+Cross-process latency (producer + consumer executables, 500k × 64 B; repeated runs put
+the consumer between 1.21M and 1.42M msg/s, i.e. 74–87 MiB/s):
 
 ```
-consumed=500000 elapsed=0.598s throughput=836736 msg/s dataThroughput=51.1 MiB/s
-latency(us): min=7.70 mean=1331.58 p50=204.80 p95=409.60 p99=13107.20 max=337048.50
+produced=500000 payloadSize=64 elapsed=0.696s throughput=717972 msg/s dataThroughput=43.8 MiB/s
+consumed=500000 bytes=32000000 elapsed=0.384s throughput=1302827 msg/s dataThroughput=79.5 MiB/s
+latency(us): min=0.20 mean=1039.54 p50=102.40 p95=204.80 p99=13107.20 max=313176.50 (n=500000)
 ```
 
 Caveats worth knowing before quoting any of this:
