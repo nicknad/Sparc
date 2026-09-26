@@ -1,3 +1,4 @@
+using Sparc.UnixMemoryMapped;
 using Sparc.WindowsMemoryMapped;
 using Sparc.Core;
 
@@ -40,7 +41,9 @@ public sealed class SpscSharedMemoryPump : TwoThreadPump
     {
         string name = "spsc-bench-" + Guid.NewGuid().ToString("N");
         int slotSize = SpscArrayPump.SlotSizeFor(payloadSize);
-        WindowsNamedMemoryMappedRegionFactory factory = new();
+        IIpcMemoryRegionFactory factory = OperatingSystem.IsWindows()
+            ? new WindowsNamedMemoryMappedRegionFactory()
+            : new UnixFileMemoryMappedRegionFactory();
         _producer = SharedRingBuffer.OpenOrCreate(factory, name, Capacity, slotSize);
         _consumer = SharedRingBuffer.OpenOrCreate(factory, name, Capacity, slotSize);
         _producer.Connect(RingBufferEndpointRole.Producer);

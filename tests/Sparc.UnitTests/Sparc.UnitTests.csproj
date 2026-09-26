@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Sparc.Core\Sparc.Core.csproj" />
     <ProjectReference Include="..\..\src\Sparc.Client\Sparc.Client.csproj" />
     <ProjectReference Include="..\..\src\Sparc.InMemory\Sparc.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.UnixMemoryMapped\Sparc.UnixMemoryMapped.csproj" />
     <ProjectReference Include="..\..\src\Sparc.WindowsMemoryMapped\Sparc.WindowsMemoryMapped.csproj" />
   </ItemGroup>
 

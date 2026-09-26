@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Sparc.Core\Sparc.Core.csproj" />
     <ProjectReference Include="..\Sparc.Client\Sparc.Client.csproj" />
+    <ProjectReference Include="..\Sparc.UnixMemoryMapped\Sparc.UnixMemoryMapped.csproj" />
     <ProjectReference Include="..\Sparc.WindowsMemoryMapped\Sparc.WindowsMemoryMapped.csproj" />
   </ItemGroup>
 

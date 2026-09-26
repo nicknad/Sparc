@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Sparc.InMemory;
+using Sparc.UnixMemoryMapped;
 using Sparc.WindowsMemoryMapped;
 
 namespace Sparc.UnitTests;
@@ -31,5 +32,19 @@ public class DependencyInjectionTests
 
         using ServiceProvider provider = services.BuildServiceProvider();
         Assert.Same(existing, provider.GetRequiredService<IIpcMemoryRegionFactory>());
+    }
+
+    [Fact]
+    public void AddUnixFileMemoryMappedIpcRegistersSingletonFactory()
+    {
+        ServiceCollection services = new();
+
+        IServiceCollection returned = services.AddUnixFileMemoryMappedIpc();
+
+        Assert.Same(services, returned);
+        using ServiceProvider provider = services.BuildServiceProvider();
+        IIpcMemoryRegionFactory factory = provider.GetRequiredService<IIpcMemoryRegionFactory>();
+        Assert.IsType<UnixFileMemoryMappedRegionFactory>(factory);
+        Assert.Same(factory, provider.GetRequiredService<IIpcMemoryRegionFactory>());
     }
 }

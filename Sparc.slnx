@@ -5,6 +5,7 @@
   <Folder Name="/src/">
     <Project Path="src/Sparc.Abstractions/Sparc.Abstractions.csproj" />
     <Project Path="src/Sparc.InMemory/Sparc.InMemory.csproj" />
+    <Project Path="src/Sparc.UnixMemoryMapped/Sparc.UnixMemoryMapped.csproj" />
     <Project Path="src/Sparc.WindowsMemoryMapped/Sparc.WindowsMemoryMapped.csproj" />
     <Project Path="src/Sparc.Client/Sparc.Client.csproj" />
     <Project Path="src/Sparc.Consumer/Sparc.Consumer.csproj" />

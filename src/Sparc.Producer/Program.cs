@@ -1,4 +1,5 @@
 using System.Globalization;
+using Sparc.UnixMemoryMapped;
 using Sparc.WindowsMemoryMapped;
 using Sparc.Cli;
 using Sparc.Client;
@@ -47,7 +48,9 @@ internal static class Program
 
     private static int Run(ProducerOptions options)
     {
-        WindowsNamedMemoryMappedRegionFactory factory = new();
+        IIpcMemoryRegionFactory factory = OperatingSystem.IsWindows()
+            ? new WindowsNamedMemoryMappedRegionFactory()
+            : new UnixFileMemoryMappedRegionFactory();
         using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(
             factory,
             options.Name,

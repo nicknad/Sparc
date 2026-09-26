@@ -43,6 +43,7 @@ Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in
 ├── src/
 │   ├── Sparc.Abstractions/           IIpcMemoryRegionFactory / IIpcMemoryRegion, options, exceptions
 │   ├── Sparc.InMemory/               pinned managed-array factory for tests and single-process development
+│   ├── Sparc.UnixMemoryMapped/       Unix file-backed implementation + DI registration
 │   ├── Sparc.WindowsMemoryMapped/    Windows named memory-mapped implementation + DI registration
 │   ├── Sparc.Core/            ring protocol: layout/header/framing, SpscRingBuffer, SharedRingBuffer
 │   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
@@ -66,16 +67,16 @@ Dependency graph (arrows = project reference):
 
 ```
 Sparc.Abstractions
-      ▲                     ▲
-Sparc.Core            Sparc.InMemory
+      ▲                ▲               ▲
+Sparc.Core      Sparc.InMemory   Sparc.UnixMemoryMapped
       ▲            ▲
 Sparc.Client  Sparc.WindowsMemoryMapped
       ▲                   ▲
 Sparc.Producer / Sparc.Consumer / samples/* (hosts)
 ```
 
-`Sparc.WindowsMemoryMapped` and `Sparc.InMemory` do not reference `Sparc.Core`;
-the ring protocol does not reference any OS type.
+`Sparc.WindowsMemoryMapped`, `Sparc.UnixMemoryMapped` and `Sparc.InMemory` do not
+reference `Sparc.Core`; the ring protocol does not reference any OS type.
 
 ---
 
@@ -120,7 +121,9 @@ latency(us): min=1.20 mean=122.44 p50=51.20 p90=102.40 p95=204.80 p99=409.60 p99
 `--count 0` on the consumer means "consume until the producer stops".
 `--size` is the payload size; layout is `[sequence:int64][timestamp:int64][fill…]` (min 16 bytes).
 `--delay-us` inserts a pause between messages on that endpoint (slow-producer/backpressure
-simulation for tests and benchmark scenarios; 0 = off). `Ctrl+C` cancels the session gracefully.
+simulation for tests and benchmark scenarios; 0 = off). The CLIs select the transport by OS:
+named memory-mapped files on Windows, file-backed regions elsewhere. `Ctrl+C` cancels the
+session gracefully.
 
 ### Exit codes (both apps)
 
@@ -146,6 +149,7 @@ Reference the projects (or packages once published) you need:
 |---|---|
 | `Sparc.Abstractions` | you only need the OS abstraction contracts |
 | `Sparc.InMemory` | you want the whole ring/session stack without the OS (tests, samples, single-process development) |
+| `Sparc.UnixMemoryMapped` | you run on Linux/macOS and want file-backed regions (+ DI) |
 | `Sparc.WindowsMemoryMapped` | you run on Windows and want named memory-mapped regions (+ DI) |
 | `Sparc.Core` | you need the buffer (`SpscRingBuffer`, `SharedRingBuffer`) |
 | `Sparc.Client` | you need producer/consumer sessions and verification |
@@ -164,7 +168,8 @@ using Sparc.Core;
 var builder = WebApplication.CreateBuilder(args);
 
 // Chooses the OS transport once. Web app code never sees MemoryMappedFile.
-builder.Services.AddWindowsNamedMemoryMappedIpc();
+builder.Services.AddWindowsNamedMemoryMappedIpc();   // Windows
+// builder.Services.AddUnixFileMemoryMappedIpc();     // Linux/macOS
 
 // e.g. builder.Services.AddHostedService<OrderProducerWorker>();
 ```
@@ -423,11 +428,15 @@ performs the protocol handshake in `RingBufferRegion`:
 
 **Platform note.** .NET supports named memory-mapped files on **Windows only**
 (`MemoryMappedFile.CreateNew(name, …)` / `OpenExisting(name)` throw
-`PlatformNotSupportedException` on Unix). `WindowsNamedMemoryMappedRegionFactory`
-checks this and fails with a clear `IpcPlatformNotSupportedException`. A Unix
-implementation would provide a file-backed `IIpcMemoryRegionFactory`
-(`MemoryMappedFile.CreateFromFile` + unlink on `TryReset`); nothing above the
-abstraction changes.
+`PlatformNotSupportedException` on Unix), so `WindowsNamedMemoryMappedRegionFactory`
+checks this and fails with a clear `IpcPlatformNotSupportedException`. Unix-like
+systems use `UnixFileMemoryMappedRegionFactory` instead: one file per region under a
+directory (default `<temp>/sparc`, tmpfs on most Linux systems), mapped with
+`MemoryMappedFile.CreateFromFile`. Those files are persistent, so a crashed creator
+leaves a stale file behind; `TryReset` unlinks it (safe on POSIX while other
+processes still have it mapped) and the next `CreateOrOpen` starts from a fresh,
+zero-filled file. Nothing above the abstraction changes — both transports implement
+the same `IIpcMemoryRegionFactory`.
 
 ---
 
@@ -442,7 +451,7 @@ deliberately explicit:
 | Producer starts first | Same, mirrored. The producer simply fills the buffer and spins until the consumer appears. |
 | Region missing | First process creates it; geometry is fixed by whoever creates it (the consumer adopts existing geometry when joining). |
 | Second producer/consumer starts | `Connect(role)` CASes the role state; a live `Starting`/`Running` peer causes exit code 4. `--takeover` forcibly reclaims a role. |
-| Stale/half-initialized region | Bad magic after `--open-timeout` → exit 6, unless `--recreate-stale` is given: drop handles, reclaim, create again. On Windows a named map dies with its last handle, so a dead creator leaves nothing behind. |
+| Stale/half-initialized region | Bad magic after `--open-timeout` → exit 6, unless `--recreate-stale` is given: drop handles, reclaim, create again. On Windows a named map dies with its last handle, so a dead creator leaves nothing behind; on Unix the backing file persists until `--recreate-stale` unlinks and recreates it. |
 | Incompatible version/geometry | Exit 5 with a message naming the mismatch. |
 | **Producer killed mid-run** | Unpublished slot writes are invisible (tail is only published after the full slot write). Messages already published stay valid. The consumer blocks on empty, detects the idle timeout and exits 3. The producer's `ProducerState` remains `Running` forever — a hard kill cannot update it, and no heartbeat is implemented (see scope). |
 | **Consumer killed mid-run** | The producer eventually fills the buffer and exits 2 after `--full-timeout`. If a consumer died gracefully it sets `Stopped`, which the producer treats as "consumer gone" (exit 3) when it observes it. |
@@ -466,7 +475,9 @@ dotnet test Sparc.slnx -c Release        # .NET 11 SDK + Microsoft.Testing.Platf
   semantics (completion, timeouts, peer-stopped drain, verification failure, cancellation,
   per-message pacing). Region protocol tests run against the
   `Sparc.InMemory` factory, so they are OS-independent; Windows factory tests are
-  guarded by `OperatingSystem.IsWindows()`.
+  guarded by `OperatingSystem.IsWindows()` and Unix factory tests by
+  `!OperatingSystem.IsWindows()` (the Unix tests were verified under WSL Debian 13
+  with the pinned SDK while CI itself stays Windows-only).
 * **ConcurrencyTests.** Two dedicated threads move **10,000,000 messages** per transport,
   with sequence + checksum + fill-byte verification on every message, for both the
   in-process array buffer and the shared-memory buffer (two views of one region). A
@@ -605,8 +616,7 @@ Caveats worth knowing before quoting any of this:
 
 Not implemented (deliberately): MPSC/MPMC, dynamic resizing, variable-sized records,
 persistence, networking, compression, encryption, multiple consumers/producers, heartbeats
-or automatic crash detection, and Unix file-backed regions (the abstraction, the Windows
-named-map implementation and the `Sparc.InMemory` development factory ship today).
+or automatic crash detection.
 
 The learning objective is the one this project exercises end to end:
 
