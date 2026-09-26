@@ -1,0 +1,201 @@
+using System.Runtime.InteropServices;
+
+namespace Sparc.Core;
+
+/// <summary>
+/// Single-producer/single-consumer lock-free ring buffer backed by a managed
+/// array (Phase 1/2 of the project).
+/// </summary>
+/// <remarks>
+/// <para><b>Slot layout:</b> <c>[int32 length][int32 type][payload...]</c>.</para>
+/// <para>
+/// <b>Algorithm.</b> <c>tail</c> (next write sequence) is owned by the producer,
+/// <c>head</c> (next read sequence) by the consumer. Both counters increase
+/// monotonically; the physical slot is <c>sequence &amp; (Capacity - 1)</c>.
+/// </para>
+/// <list type="bullet">
+///   <item><description>Producer: read <c>head</c> (acquire) → check space → write slot → publish <c>tail</c> (release).</description></item>
+///   <item><description>Consumer: read <c>tail</c> (acquire) → check data → read slot → publish <c>head</c> (release).</description></item>
+/// </list>
+/// <para>
+/// The release/acquire pair on <c>tail</c> makes the slot bytes written before
+/// the publish visible to the consumer, and the release/acquire pair on
+/// <c>head</c> guarantees the producer never overwrites a slot the consumer is
+/// still reading (or has not yet finished reading).
+/// </para>
+/// <para>
+/// <b>Cached peer cursor.</b> Each side keeps a private, possibly stale copy of
+/// the peer's counter and only re-reads the shared value when the stale copy
+/// says "full" (producer) or "empty" (consumer). The cached value can never be
+/// newer than the real cursor, so the worst case is one redundant refresh; the
+/// win is that a line written by the peer on every message is not fetched on
+/// every message (this is the usual SPSC queue optimization).
+/// </para>
+/// <para>
+/// The counters are 64-bit. On a 64-bit process aligned 64-bit loads/stores are
+/// atomic; on 32-bit processes they are not guaranteed to be, so 64-bit is
+/// required for cross-process use.
+/// </para>
+/// </remarks>
+public sealed class SpscRingBuffer : IRingBuffer
+{
+    private readonly byte[] _buffer;
+    private readonly int _mask;
+
+    // Padding keeps the producer-owned and consumer-owned counters on separate
+    // cache lines, avoiding false sharing when the two ends run on different cores.
+    private PaddedLong _head;
+    private PaddedLong _tail;
+
+    // Private caches of the *peer's* cursor. Reading the peer's cache line costs a
+    // coherence transfer every time it was written, so each side only refreshes
+    // its cache when the stale copy says "full" (producer) or "empty" (consumer).
+    // The cached value can only ever be older, never newer, than the peer's real
+    // cursor, so the worst case is a redundant refresh.
+    private long _cachedHead; // producer-private
+    private long _cachedTail; // consumer-private
+
+    /// <summary>Creates a buffer with the project defaults (1024 slots × 256 bytes).</summary>
+    public SpscRingBuffer()
+        : this(RingBufferLayout.DefaultCapacity, RingBufferLayout.DefaultSlotSize)
+    {
+    }
+
+    /// <summary>Creates a buffer with explicit geometry.</summary>
+    /// <param name="capacity">Number of slots; must be a power of two.</param>
+    /// <param name="slotSize">Bytes per slot; must exceed <see cref="RingBufferLayout.MessageHeaderSize"/>.</param>
+    public SpscRingBuffer(int capacity, int slotSize)
+    {
+        RingBufferLayout.ValidateGeometry(capacity, slotSize);
+        Capacity = capacity;
+        SlotSize = slotSize;
+        MaxPayloadSize = RingBufferLayout.MaxPayloadSizeFor(slotSize);
+        _mask = capacity - 1;
+        _buffer = GC.AllocateArray<byte>(checked(capacity * slotSize), pinned: true);
+    }
+
+    /// <inheritdoc />
+    public int Capacity { get; }
+
+    /// <inheritdoc />
+    public int SlotSize { get; }
+
+    /// <inheritdoc />
+    public int MaxPayloadSize { get; }
+
+    /// <inheritdoc />
+    public bool IsEmpty => Volatile.Read(ref _head.Value) == Volatile.Read(ref _tail.Value);
+
+    /// <inheritdoc />
+    public int Count
+    {
+        get
+        {
+            long head = Volatile.Read(ref _head.Value);
+            long tail = Volatile.Read(ref _tail.Value);
+            return (int)(tail - head);
+        }
+    }
+
+    /// <inheritdoc />
+    public bool TryWrite(int type, ReadOnlySpan<byte> payload)
+    {
+        if ((uint)payload.Length > (uint)MaxPayloadSize)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(payload), payload.Length,
+                $"Payload of {payload.Length} bytes exceeds the maximum of {MaxPayloadSize} bytes.");
+        }
+
+        // This thread owns _tail; the value is only changed here.
+        long tail = _tail.Value;
+
+        // Acquire (only when the cached peer cursor claims the buffer is full):
+        // never overwrite the slot the consumer is currently reading.
+        long head = _cachedHead;
+        if (tail - head >= Capacity)
+        {
+            head = Volatile.Read(ref _head.Value);
+            _cachedHead = head;
+            if (tail - head >= Capacity)
+            {
+                return false; // full
+            }
+        }
+
+        Span<byte> slot = _buffer.AsSpan((int)(tail & _mask) * SlotSize, SlotSize);
+        SlotFraming.Write(slot, type, payload);
+
+        // Release: the slot bytes above must be visible before the consumer can
+        // observe the advanced tail.
+        Volatile.Write(ref _tail.Value, tail + 1);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public bool TryRead(Span<byte> destination, out int bytesRead, out int type)
+    {
+        if (destination.Length < MaxPayloadSize)
+        {
+            throw new ArgumentException(
+                $"Destination must be at least {MaxPayloadSize} bytes (MaxPayloadSize).", nameof(destination));
+        }
+
+        // This thread owns _head.
+        long head = _head.Value;
+
+        // Acquire (only when the cached peer cursor claims the buffer is empty):
+        // observe the producer's release of the slot contents.
+        long tail = _cachedTail;
+        if (tail == head)
+        {
+            tail = Volatile.Read(ref _tail.Value);
+            _cachedTail = tail;
+            if (tail == head)
+            {
+                bytesRead = 0;
+                type = 0;
+                return false; // empty
+            }
+        }
+
+        ReadOnlySpan<byte> slot = _buffer.AsSpan((int)(head & _mask) * SlotSize, SlotSize);
+        SlotFraming.Read(slot, destination, out bytesRead, out type);
+
+        // Release: the producer must not overwrite this slot before the copy above
+        // is complete. A crash between the copy and this store may redeliver the
+        // message (at-least-once across crashes).
+        Volatile.Write(ref _head.Value, head + 1);
+        return true;
+    }
+
+    /// <summary>
+    /// Blocking convenience wrapper: spins until the message fits. For latency
+    /// sensitive callers prefer <see cref="TryWrite(int, ReadOnlySpan{byte})"/>.
+    /// </summary>
+    public void Write(ReadOnlySpan<byte> payload, int type = 0)
+    {
+        SpinWait spin = new();
+        while (!TryWrite(type, payload))
+        {
+            spin.SpinOnce();
+        }
+    }
+
+    /// <summary>Resets cursors. Only valid while no endpoint is active.</summary>
+    public void Clear()
+    {
+        Volatile.Write(ref _head.Value, 0);
+        Volatile.Write(ref _tail.Value, 0);
+        _cachedHead = 0;
+        _cachedTail = 0;
+    }
+
+    /// <summary>A 64-byte-padded 64-bit field so two counters never share a cache line.</summary>
+    [StructLayout(LayoutKind.Explicit, Size = RingBufferLayout.CacheLineSize)]
+    private struct PaddedLong
+    {
+        [FieldOffset(0)]
+        public long Value;
+    }
+}

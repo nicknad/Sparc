@@ -1,6 +1,6 @@
-using RingBuffer.Core;
+using Sparc.Core;
 
-namespace RingBuffer.Cli;
+namespace Sparc.Cli;
 
 /// <summary>
 /// Process exit codes shared by the sample CLI hosts. Library layers return

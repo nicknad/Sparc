@@ -1,6 +1,6 @@
-# Cross-Process SPSC Lock-Free Ring Buffer (.NET)
+# SPARC — Shared Process Atomic Ring Channel (.NET)
 
-A single-producer / single-consumer lock-free ring buffer in C#, with an
+**SPARC** is a single-producer / single-consumer lock-free ring buffer in C#, with an
 operating-system abstraction and a reusable session layer, letting **two
 independent processes exchange fixed-size messages through the same physical
 memory without locks**.
@@ -37,35 +37,35 @@ Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in
 ## Repository layout
 
 ```
-SpscRingBuffer.slnx
+Sparc.slnx
 ├── src/
-│   ├── Ipc.Abstractions/           IIpcMemoryRegionFactory / IIpcMemoryRegion, options, exceptions
-│   ├── Ipc.WindowsMemoryMapped/    Windows named memory-mapped implementation + DI registration
-│   ├── RingBuffer.Core/            ring protocol: layout/header/framing, SpscRingBuffer, SharedRingBuffer
-│   ├── RingBuffer.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
-│   ├── RingBuffer.Producer/        producer CLI (args → session → summary → exit code)
-│   └── RingBuffer.Consumer/        consumer CLI (args → session → summary → exit code)
+│   ├── Sparc.Abstractions/           IIpcMemoryRegionFactory / IIpcMemoryRegion, options, exceptions
+│   ├── Sparc.WindowsMemoryMapped/    Windows named memory-mapped implementation + DI registration
+│   ├── Sparc.Core/            ring protocol: layout/header/framing, SpscRingBuffer, SharedRingBuffer
+│   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
+│   ├── Sparc.Producer/        producer CLI (args → session → summary → exit code)
+│   └── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
 ├── tests/
-│   ├── RingBuffer.UnitTests/       algorithm, region protocol, sessions (in-memory region factory)
-│   ├── RingBuffer.ConcurrencyTests/ 2 × 10,000,000 message two-thread verification
-│   └── RingBuffer.ProcessTests/    two real processes: lifecycle, conflicts, kill tests
+│   ├── Sparc.UnitTests/       algorithm, region protocol, sessions (in-memory region factory)
+│   ├── Sparc.ConcurrencyTests/ 2 × 10,000,000 message two-thread verification
+│   └── Sparc.ProcessTests/    two real processes: lifecycle, conflicts, kill tests
 └── benchmarks/
-    └── RingBuffer.Benchmarks/      BenchmarkDotNet throughput suite + custom latency harness
+    └── Sparc.Benchmarks/      BenchmarkDotNet throughput suite + custom latency harness
 ```
 
 Dependency graph (arrows = project reference):
 
 ```
-Ipc.Abstractions
+Sparc.Abstractions
       ▲
-RingBuffer.Core
+Sparc.Core
       ▲            ▲
-RingBuffer.Client  Ipc.WindowsMemoryMapped
+Sparc.Client  Sparc.WindowsMemoryMapped
       ▲                   ▲
-RingBuffer.Producer / RingBuffer.Consumer (CLI hosts)
+Sparc.Producer / Sparc.Consumer (CLI hosts)
 ```
 
-`Ipc.WindowsMemoryMapped` does not reference `RingBuffer.Core`; the ring protocol
+`Sparc.WindowsMemoryMapped` does not reference `Sparc.Core`; the ring protocol
 does not reference any OS type.
 
 ---
@@ -73,14 +73,14 @@ does not reference any OS type.
 ## Quick start (CLI)
 
 ```powershell
-dotnet build SpscRingBuffer.slnx -c Release
-dotnet test  SpscRingBuffer.slnx -c Release
+dotnet build Sparc.slnx -c Release
+dotnet test  Sparc.slnx -c Release
 
 # terminal 1
-dotnet run -c Release --project src/RingBuffer.Consumer -- --name demo --count 1000000
+dotnet run -c Release --project src/Sparc.Consumer -- --name demo --count 1000000
 
 # terminal 2
-dotnet run -c Release --project src/RingBuffer.Producer  -- --name demo --count 1000000 --size 64
+dotnet run -c Release --project src/Sparc.Producer  -- --name demo --count 1000000 --size 64
 ```
 
 The consumer may also be started first (it creates the region; the producer joins).
@@ -126,18 +126,18 @@ Reference the projects (or packages once published) you need:
 
 | Library | Use when |
 |---|---|
-| `Ipc.Abstractions` | you only need the OS abstraction contracts |
-| `Ipc.WindowsMemoryMapped` | you run on Windows and want named memory-mapped regions (+ DI) |
-| `RingBuffer.Core` | you need the buffer (`SpscRingBuffer`, `SharedRingBuffer`) |
-| `RingBuffer.Client` | you need producer/consumer sessions and verification |
+| `Sparc.Abstractions` | you only need the OS abstraction contracts |
+| `Sparc.WindowsMemoryMapped` | you run on Windows and want named memory-mapped regions (+ DI) |
+| `Sparc.Core` | you need the buffer (`SpscRingBuffer`, `SharedRingBuffer`) |
+| `Sparc.Client` | you need producer/consumer sessions and verification |
 
 ### Web app / worker service / generic host
 
 ```csharp
-using Ipc;
-using Ipc.WindowsMemoryMapped;
-using RingBuffer.Client;
-using RingBuffer.Core;
+using Sparc;
+using Sparc.WindowsMemoryMapped;
+using Sparc.Client;
+using Sparc.Core;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -186,7 +186,7 @@ SessionStopReason  { Completed, PeerStopped, Timeout, VerificationFailed, Cancel
 
 Testability: pass a custom `TimeProvider` and/or `ILogger` into the sessions, and
 swap `IIpcMemoryRegionFactory` for the in-memory test double to run the whole
-stack without the OS (see `tests/RingBuffer.UnitTests/Support`).
+stack without the OS (see `tests/Sparc.UnitTests/Support`).
 
 ---
 
@@ -374,7 +374,7 @@ deliberately explicit:
 ## 5. Testing
 
 ```powershell
-dotnet test SpscRingBuffer.slnx -c Release        # .NET 11 SDK + Microsoft.Testing.Platform (xunit v3)
+dotnet test Sparc.slnx -c Release        # .NET 11 SDK + Microsoft.Testing.Platform (xunit v3)
 ```
 
 * **UnitTests.** Empty/one/full/wraparound, arbitrary bytes, zero-length and maximum-sized
@@ -401,13 +401,13 @@ check exit codes and message counts, not wall-clock timing.
 
 ```powershell
 # throughput matrix (BenchmarkDotNet; 6 transports × 5 message sizes)
-dotnet run -c Release --project benchmarks/RingBuffer.Benchmarks -- --filter *
+dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --filter *
 
 # one-way latency percentiles, all transports in-process
-dotnet run -c Release --project benchmarks/RingBuffer.Benchmarks -- --latency --transport all --count 200000 --size 64
+dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --latency --transport all --count 200000 --size 64
 
 # the real cross-process measurement (spawns the producer and consumer executables)
-dotnet run -c Release --project benchmarks/RingBuffer.Benchmarks -- --latency --transport shared-xproc --count 500000 --size 64
+dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --latency --transport shared-xproc --count 500000 --size 64
 ```
 
 Transports compared: `SpscRingBuffer` (managed array), `SharedRingBuffer`

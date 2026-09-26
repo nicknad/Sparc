@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Sparc.UnitTests</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sparc.Core\Sparc.Core.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Client\Sparc.Client.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.WindowsMemoryMapped\Sparc.WindowsMemoryMapped.csproj" />
+  </ItemGroup>
+
+</Project>

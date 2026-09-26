@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net11.0</TargetFrameworks>
+    <RootNamespace>Sparc</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Description>Operating-system abstractions for cross-process shared memory: region factory/region contracts, options and exceptions. Implementations (for example Windows named memory-mapped files) plug in behind IIpcMemoryRegionFactory.</Description>
+  </PropertyGroup>
+
+</Project>

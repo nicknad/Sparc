@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Sparc.Benchmarks/Sparc.Benchmarks.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Sparc.Abstractions/Sparc.Abstractions.csproj" />
+    <Project Path="src/Sparc.WindowsMemoryMapped/Sparc.WindowsMemoryMapped.csproj" />
+    <Project Path="src/Sparc.Client/Sparc.Client.csproj" />
+    <Project Path="src/Sparc.Consumer/Sparc.Consumer.csproj" />
+    <Project Path="src/Sparc.Core/Sparc.Core.csproj" />
+    <Project Path="src/Sparc.Producer/Sparc.Producer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Sparc.ConcurrencyTests/Sparc.ConcurrencyTests.csproj" />
+    <Project Path="tests/Sparc.ProcessTests/Sparc.ProcessTests.csproj" />
+    <Project Path="tests/Sparc.UnitTests/Sparc.UnitTests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Sparc.Benchmarks</RootNamespace>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="BenchmarkDotNet.Attributes" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.16.0-preview.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sparc.Core\Sparc.Core.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Client\Sparc.Client.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.WindowsMemoryMapped\Sparc.WindowsMemoryMapped.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Producer\Sparc.Producer.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\Sparc.Consumer\Sparc.Consumer.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

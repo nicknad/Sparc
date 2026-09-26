@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Sparc.Producer</RootNamespace>
+    <AssemblyName>Sparc.Producer</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\CommandLine.cs" Link="CommandLine.cs" />
+    <Compile Include="..\Shared\Cli.cs" Link="Cli.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sparc.Core\Sparc.Core.csproj" />
+    <ProjectReference Include="..\Sparc.Client\Sparc.Client.csproj" />
+    <ProjectReference Include="..\Sparc.WindowsMemoryMapped\Sparc.WindowsMemoryMapped.csproj" />
+  </ItemGroup>
+
+</Project>

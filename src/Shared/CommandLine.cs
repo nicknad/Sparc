@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace RingBuffer.Cli;
+namespace Sparc.Cli;
 
 /// <summary>Thrown when command line arguments are invalid.</summary>
 internal sealed class UsageException(string message) : Exception(message);
