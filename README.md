@@ -45,6 +45,8 @@ Sparc.slnx
 │   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
 │   ├── Sparc.Producer/        producer CLI (args → session → summary → exit code)
 │   └── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
+├── samples/
+│   └── Sparc.WebApp/          minimal API + BackgroundService hosting both session roles
 ├── tests/
 │   ├── Sparc.UnitTests/       algorithm, region protocol, sessions (in-memory region factory)
 │   ├── Sparc.ConcurrencyTests/ 2 × 10,000,000 message two-thread verification
@@ -62,7 +64,7 @@ Sparc.Core
       ▲            ▲
 Sparc.Client  Sparc.WindowsMemoryMapped
       ▲                   ▲
-Sparc.Producer / Sparc.Consumer (CLI hosts)
+Sparc.Producer / Sparc.Consumer / samples/Sparc.WebApp (hosts)
 ```
 
 `Sparc.WindowsMemoryMapped` does not reference `Sparc.Core`; the ring protocol
@@ -82,6 +84,10 @@ dotnet run -c Release --project src/Sparc.Consumer -- --name demo --count 100000
 # terminal 2
 dotnet run -c Release --project src/Sparc.Producer  -- --name demo --count 1000000 --size 64
 ```
+
+Builds treat warnings as errors (`TreatWarningsAsErrors` in `Directory.Build.props`).
+A GitHub Actions workflow (`.github/workflows/ci.yml`) is ready to run build + test on
+`windows-latest` once a git remote is configured.
 
 The consumer may also be started first (it creates the region; the producer joins).
 Example output:
@@ -117,6 +123,7 @@ latency(us): min=1.20 mean=122.44 p50=51.20 p95=204.80 p99=409.60 max=20480.00 (
 | 6 | corrupt / half-initialized region |
 | 7 | message verification failure |
 | 64 | usage error |
+| 70 | internal error (unexpected exception) |
 
 ---
 
@@ -132,6 +139,9 @@ Reference the projects (or packages once published) you need:
 | `Sparc.Client` | you need producer/consumer sessions and verification |
 
 ### Web app / worker service / generic host
+
+A runnable version of this pattern lives in `samples/Sparc.WebApp` (see below);
+the snippets show the shape of a production worker.
 
 ```csharp
 using Sparc;
@@ -171,10 +181,26 @@ sealed class OrderProducerWorker(
 }
 ```
 
+### Runnable sample (`samples/Sparc.WebApp`)
+
+```powershell
+dotnet run -c Release --project samples/Sparc.WebApp -- --urls http://127.0.0.1:5199
+```
+
+The sample registers the transport with `AddWindowsNamedMemoryMappedIpc()`, then a
+single `BackgroundService` hosts both roles over two views of the same region
+(in a real deployment each process would host one role). `GET /` returns the
+transport and transfer status; `POST /transfer?count=n` starts another transfer.
+One 100,000-message transfer runs at startup; set `Sparc:AutoStartCount=0` to
+disable it.
+
 Sessions are intentionally **synchronous and blocking** (they spin on the lock-free
 buffer); hosts should invoke them on a background thread (`Task.Run`,
 `BackgroundService`). Cancellation is checked on the full/empty paths and
-periodically on the hot path.
+periodically on the hot path; `SharedRingBuffer.Connect` and `SpscRingBuffer.Write`
+also accept a `CancellationToken` that bounds their spin loops, and the sessions
+report cancellation during role claiming as `SessionStopReason.Cancelled` rather
+than throwing.
 
 Structured outcomes replace console/exit-code decisions:
 
@@ -336,9 +362,9 @@ performs the protocol handshake in `RingBufferRegion`:
 * Openers validate version, geometry and declared size, producing specific exceptions
   (`RingBufferVersionMismatchException`, `RingBufferGeometryMismatchException`,
   `RingBufferCorruptedException`).
-* Stale-region recovery is split: `RingBufferRegion` detects the bad magic, the factory
-  reclaims the backing store (`TryReset`), and the ring layer retries once (only when
-  `RecreateIfStale` is set).
+* Stale-region recovery is split: `RingBufferRegion` detects the bad magic, asks the
+  factory to reclaim the backing store (`TryReset`; a no-op on Windows, where dropping
+  the last handle is enough), and retries once — only when `RecreateIfStale` is set.
 
 **Platform note.** .NET supports named memory-mapped files on **Windows only**
 (`MemoryMappedFile.CreateNew(name, …)` / `OpenExisting(name)` throw
@@ -380,17 +406,22 @@ dotnet test Sparc.slnx -c Release        # .NET 11 SDK + Microsoft.Testing.Platf
 * **UnitTests.** Empty/one/full/wraparound, arbitrary bytes, zero-length and maximum-sized
   payloads, 200k randomized operations against a `Queue<byte[]>` oracle, header/layout
   validation, region creation/join/version/geometry/corruption, role conflicts and
-  takeover, endpoint states, histogram math, and session semantics
-  (completion, timeouts, peer-stopped drain, verification failure, cancellation). Region
-  protocol tests run against an in-memory `IIpcMemoryRegionFactory`, so they are
-  OS-independent; Windows factory tests are guarded by `OperatingSystem.IsWindows()`.
-* **ConcurrencyTests.** Two threads, **10,000,000 messages each**, sequence + checksum +
-  fill-byte verification on every message, for both the in-process array buffer and the
-  shared-memory buffer (two views of one region). A tiny-capacity (2-slot) torture test and
-  a no-allocation assertion (writes+reads allocate < 4 KiB total).
+  takeover, endpoint states, histogram math, DI registration, cancellation while a
+  blocking write is full, and session semantics (completion, timeouts, peer-stopped
+  drain, verification failure, cancellation). Region protocol tests run against an
+  in-memory `IIpcMemoryRegionFactory`, so they are OS-independent; Windows factory
+  tests are guarded by `OperatingSystem.IsWindows()`.
+* **ConcurrencyTests.** Two dedicated threads move **10,000,000 messages** per transport,
+  with sequence + checksum + fill-byte verification on every message, for both the
+  in-process array buffer and the shared-memory buffer (two views of one region). A
+  tiny-capacity (2-slot) torture test (1,000,000 messages) and a no-allocation assertion
+  (writes+reads allocate < 4 KiB total).
 * **ProcessTests.** Real `dotnet` child processes: both start orders, unlimited consumer
   drain, role conflict, geometry mismatch, killed consumer → producer times out, killed
   producer → consumer exits incomplete, `--require-existing` timeout.
+
+The *full* suite targets Windows: the shared-memory concurrency test and the process
+tests need named memory-mapped files.
 
 Crash tests kill processes with `Process.Kill(entireProcessTree: true)`; the assertions
 check exit codes and message counts, not wall-clock timing.
@@ -416,7 +447,9 @@ Transports compared: `SpscRingBuffer` (managed array), `SharedRingBuffer`
 runs two dedicated threads pumping `Batch = 65,536` messages per measured invocation.
 
 Example run on this machine (Windows 11 VM, i7-1260P, BDN 0.16 preview, .NET 11 RC1,
-`IterationCount=3 WarmupCount=1`; **wide confidence intervals — treat as directional**):
+`IterationCount=3 WarmupCount=1`; captured before the SPARC rename and the
+safety-hardening commits, which do not touch the measured per-message paths; **wide
+confidence intervals — treat as directional**):
 
 | Transport | 16 B | 64 B | 256 B | 1 KB | 4 KB | Alloc/op @64 B |
 |---|---:|---:|---:|---:|---:|---:|
