@@ -37,7 +37,9 @@ Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in
 ## Repository layout
 
 ```
-Sparc.slnx
+.
+├── Sparc.slnx                library solution: src, tests, benchmarks
+├── Sparc.Samples.slnx        samples solution: samples/ (intentionally not in Sparc.slnx)
 ├── src/
 │   ├── Sparc.Abstractions/           IIpcMemoryRegionFactory / IIpcMemoryRegion, options, exceptions
 │   ├── Sparc.WindowsMemoryMapped/    Windows named memory-mapped implementation + DI registration
@@ -81,6 +83,7 @@ does not reference any OS type.
 ```powershell
 dotnet build Sparc.slnx -c Release
 dotnet test  Sparc.slnx -c Release
+dotnet build Sparc.Samples.slnx -c Release    # samples live in a separate solution
 
 # terminal 1
 dotnet run -c Release --project src/Sparc.Consumer -- --name demo --count 1000000
@@ -90,8 +93,10 @@ dotnet run -c Release --project src/Sparc.Producer  -- --name demo --count 10000
 ```
 
 Builds treat warnings as errors (`TreatWarningsAsErrors` in `Directory.Build.props`).
-A GitHub Actions workflow (`.github/workflows/ci.yml`) is ready to run build + test on
-`windows-latest` once a git remote is configured.
+Samples are intentionally not part of the library solution: they build from
+`Sparc.Samples.slnx` (same repo, separate solution). A GitHub Actions workflow
+(`.github/workflows/ci.yml`) is ready to build + test the library solution and build
+the samples on `windows-latest` once a git remote is configured.
 
 The consumer may also be started first (it creates the region; the producer joins).
 Example output:

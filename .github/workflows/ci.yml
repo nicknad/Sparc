@@ -22,3 +22,6 @@ jobs:
 
       - name: Test
         run: dotnet test Sparc.slnx -c Release --no-build
+
+      - name: Build samples
+        run: dotnet build Sparc.Samples.slnx -c Release --no-incremental
