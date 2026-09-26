@@ -2,13 +2,9 @@
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net11.0</TargetFrameworks>
-    <RootNamespace>RingBuffer.Core</RootNamespace>
+    <RootNamespace>Ipc</RootNamespace>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>true</IsPackable>
   </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\Ipc.Abstractions\Ipc.Abstractions.csproj" />
-  </ItemGroup>
 
 </Project>

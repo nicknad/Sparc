@@ -3,6 +3,9 @@
     <Project Path="benchmarks/RingBuffer.Benchmarks/RingBuffer.Benchmarks.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Ipc.Abstractions/Ipc.Abstractions.csproj" />
+    <Project Path="src/Ipc.WindowsMemoryMapped/Ipc.WindowsMemoryMapped.csproj" />
+    <Project Path="src/RingBuffer.Client/RingBuffer.Client.csproj" />
     <Project Path="src/RingBuffer.Consumer/RingBuffer.Consumer.csproj" />
     <Project Path="src/RingBuffer.Core/RingBuffer.Core.csproj" />
     <Project Path="src/RingBuffer.Producer/RingBuffer.Producer.csproj" />
