@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
-using RingBuffer.Core.Diagnostics;
+using RingBuffer.Client.Diagnostics;
 
 namespace RingBuffer.Benchmarks;
 

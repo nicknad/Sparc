@@ -1,7 +1,7 @@
 using System.Numerics;
 using System.Text;
 
-namespace RingBuffer.Core.Diagnostics;
+namespace RingBuffer.Client.Diagnostics;
 
 /// <summary>
 /// Allocation-free log2-bucketed latency histogram. Values are recorded in

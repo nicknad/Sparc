@@ -1,16 +1,16 @@
-using RingBuffer.Core;
+using Ipc;
 
-namespace RingBuffer.SharedMemory;
+namespace RingBuffer.Core;
 
 /// <summary>
 /// Single-producer/single-consumer lock-free ring buffer whose state lives in a
-/// cross-process <see cref="SharedMemoryRegion"/>.
+/// cross-process <see cref="RingBufferRegion"/>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the Phase 3 incarnation of <see cref="SpscRingBuffer"/>: the same
-/// algorithm, but <c>head</c>, <c>tail</c> and the slots live in memory mapped
-/// by two independent processes. All ordering guarantees are provided by
+/// This is the shared-memory incarnation of <see cref="SpscRingBuffer"/>: the
+/// same algorithm, but <c>head</c>, <c>tail</c> and the slots live in memory
+/// mapped by two independent processes. All ordering guarantees are provided by
 /// <see cref="Volatile"/>/<see cref="Interlocked"/> operations on the mapped
 /// addresses, not by the OS. Like the in-process version, each side caches the
 /// peer's cursor privately and only refreshes it when the cached value says
@@ -25,7 +25,7 @@ namespace RingBuffer.SharedMemory;
 /// </remarks>
 public sealed class SharedRingBuffer : IRingBuffer, IDisposable
 {
-    private readonly SharedMemoryRegion _region;
+    private readonly RingBufferRegion _region;
     private readonly bool _ownsRegion;
     private readonly int _mask;
     private readonly unsafe byte* _slots;
@@ -40,7 +40,7 @@ public sealed class SharedRingBuffer : IRingBuffer, IDisposable
     private long _cachedHead; // producer-private
     private long _cachedTail; // consumer-private
 
-    public SharedRingBuffer(SharedMemoryRegion region, bool ownsRegion = false)
+    public SharedRingBuffer(RingBufferRegion region, bool ownsRegion = true)
     {
         ArgumentNullException.ThrowIfNull(region);
         _region = region;
@@ -66,25 +66,27 @@ public sealed class SharedRingBuffer : IRingBuffer, IDisposable
 
     /// <summary>Creates the region if needed, otherwise joins the existing one.</summary>
     public static SharedRingBuffer OpenOrCreate(
+        IIpcMemoryRegionFactory factory,
         string name,
         int capacity = RingBufferLayout.DefaultCapacity,
         int slotSize = RingBufferLayout.DefaultSlotSize,
-        SharedMemoryOptions? options = null)
+        SharedRingBufferOptions? options = null)
     {
         return new SharedRingBuffer(
-            SharedMemoryRegion.CreateOrOpen(name, capacity, slotSize, options),
+            RingBufferRegion.CreateOrOpen(factory, name, capacity, slotSize, options),
             ownsRegion: true);
     }
 
     /// <summary>Joins an existing region; fails if it does not exist.</summary>
     public static SharedRingBuffer OpenExisting(
+        IIpcMemoryRegionFactory factory,
         string name,
         int capacity = RingBufferLayout.DefaultCapacity,
         int slotSize = RingBufferLayout.DefaultSlotSize,
-        SharedMemoryOptions? options = null)
+        SharedRingBufferOptions? options = null)
     {
         return new SharedRingBuffer(
-            SharedMemoryRegion.OpenExisting(name, capacity, slotSize, options),
+            RingBufferRegion.OpenExisting(factory, name, capacity, slotSize, options),
             ownsRegion: true);
     }
 
@@ -118,8 +120,8 @@ public sealed class SharedRingBuffer : IRingBuffer, IDisposable
     /// <summary>Advisory state reported by the consumer.</summary>
     public RingBufferEndpointState ConsumerState => _region.ReadEndpointState(RingBufferEndpointRole.Consumer);
 
-    /// <summary>The underlying mapped region.</summary>
-    public SharedMemoryRegion Region => _region;
+    /// <summary>The underlying protocol region.</summary>
+    public RingBufferRegion Region => _region;
 
     /// <summary>
     /// Claims the given role. Throws <see cref="RingBufferRoleConflictException"/>

@@ -1,6 +1,6 @@
 using System.Globalization;
+using Ipc.WindowsMemoryMapped;
 using RingBuffer.Core;
-using RingBuffer.SharedMemory;
 
 namespace RingBuffer.ConcurrencyTests;
 
@@ -72,11 +72,10 @@ public class SharedRingBufferConcurrencyTests(ITestOutputHelper output)
     public void TenMillionMessagesArriveInOrderAcrossTwoMappings()
     {
         string name = "spsc-concurrency-" + Guid.NewGuid().ToString("N");
+        WindowsNamedMemoryMappedRegionFactory factory = new();
 
-        using SharedMemoryRegion producerRegion = SharedMemoryRegion.CreateOrOpen(name, 1024, 256);
-        using SharedMemoryRegion consumerRegion = SharedMemoryRegion.CreateOrOpen(name, 1024, 256);
-        using SharedRingBuffer producerView = new(producerRegion);
-        using SharedRingBuffer consumerView = new(consumerRegion);
+        using SharedRingBuffer producerView = SharedRingBuffer.OpenOrCreate(factory, name, 1024, 256);
+        using SharedRingBuffer consumerView = SharedRingBuffer.OpenOrCreate(factory, name, 1024, 256);
 
         producerView.Connect(RingBufferEndpointRole.Producer);
         consumerView.Connect(RingBufferEndpointRole.Consumer);

@@ -1,4 +1,4 @@
-using RingBuffer.Core.Diagnostics;
+using RingBuffer.Client.Diagnostics;
 
 namespace RingBuffer.UnitTests;
 

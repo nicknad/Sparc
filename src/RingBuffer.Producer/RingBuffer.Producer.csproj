@@ -9,10 +9,12 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\CommandLine.cs" Link="CommandLine.cs" />
+    <Compile Include="..\Shared\Cli.cs" Link="Cli.cs" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\RingBuffer.SharedMemory\RingBuffer.SharedMemory.csproj" />
+    <ProjectReference Include="..\RingBuffer.Core\RingBuffer.Core.csproj" />
+    <ProjectReference Include="..\Ipc.WindowsMemoryMapped\Ipc.WindowsMemoryMapped.csproj" />
   </ItemGroup>
 
 </Project>

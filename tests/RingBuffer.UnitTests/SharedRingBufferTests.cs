@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 using RingBuffer.Core;
-using RingBuffer.SharedMemory;
+using RingBuffer.UnitTests.Support;
 
 namespace RingBuffer.UnitTests;
 
@@ -11,11 +11,10 @@ public class SharedRingBufferTests
     [Fact]
     public void TwoEndpointsExchangeMessagesInOrder()
     {
+        InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
-        using SharedMemoryRegion producerRegion = SharedMemoryRegion.CreateOrOpen(name, 4, 64);
-        using SharedMemoryRegion consumerRegion = SharedMemoryRegion.CreateOrOpen(name, 4, 64);
-        using SharedRingBuffer producer = new(producerRegion);
-        using SharedRingBuffer consumer = new(consumerRegion);
+        using SharedRingBuffer producer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        using SharedRingBuffer consumer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
 
         producer.Connect(RingBufferEndpointRole.Producer);
         consumer.Connect(RingBufferEndpointRole.Consumer);
@@ -60,11 +59,12 @@ public class SharedRingBufferTests
     [Fact]
     public void FreshConsumerAttachedToDrainedNonZeroRegionReportsEmpty()
     {
+        InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
-        using SharedMemoryRegion region = SharedMemoryRegion.CreateOrOpen(name, 4, 64);
+        using RingBufferRegion region = RingBufferRegion.CreateOrOpen(factory, name, 4, 64);
 
-        using (SharedRingBuffer producer = new(region))
-        using (SharedRingBuffer firstConsumer = new(region))
+        using (SharedRingBuffer producer = new(region, ownsRegion: false))
+        using (SharedRingBuffer firstConsumer = new(region, ownsRegion: false))
         {
             producer.Connect(RingBufferEndpointRole.Producer);
             firstConsumer.Connect(RingBufferEndpointRole.Consumer);
@@ -88,7 +88,7 @@ public class SharedRingBufferTests
 
         // head == tail == 3, the previous consumer said goodbye; a fresh view
         // must not mistake the stale cached cursor for pending data.
-        using SharedRingBuffer restarted = new(region);
+        using SharedRingBuffer restarted = new(region, ownsRegion: false);
         restarted.Connect(RingBufferEndpointRole.Consumer, takeover: true);
 
         Span<byte> buffer = new byte[restarted.MaxPayloadSize];
@@ -98,10 +98,10 @@ public class SharedRingBufferTests
     [Fact]
     public void RoleConflictIsRejectedUnlessTakeover()
     {
+        InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
-        using SharedMemoryRegion region = SharedMemoryRegion.CreateOrOpen(name, 4, 64);
-        using SharedRingBuffer first = new(region);
-        using SharedRingBuffer second = new(region);
+        using SharedRingBuffer first = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        using SharedRingBuffer second = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
 
         first.Connect(RingBufferEndpointRole.Producer);
 
@@ -109,33 +109,35 @@ public class SharedRingBufferTests
             () => second.Connect(RingBufferEndpointRole.Producer));
 
         second.Connect(RingBufferEndpointRole.Producer, takeover: true);
-        Assert.Equal(RingBufferEndpointState.Running, region.ReadEndpointState(RingBufferEndpointRole.Producer));
+        Assert.Equal(RingBufferEndpointState.Running, second.ProducerState);
     }
 
     [Fact]
     public void GracefulDisposeSetsStoppedAndAbortSetsFaulted()
     {
+        InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
-        using SharedMemoryRegion region = SharedMemoryRegion.CreateOrOpen(name, 4, 64);
+        using SharedRingBuffer stateReader = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
 
-        SharedRingBuffer buffer = new(region);
-        buffer.Connect(RingBufferEndpointRole.Producer);
-        buffer.Dispose();
-        Assert.Equal(RingBufferEndpointState.Stopped, region.ReadEndpointState(RingBufferEndpointRole.Producer));
+        SharedRingBuffer producer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        producer.Connect(RingBufferEndpointRole.Producer);
+        producer.Dispose();
+        Assert.Equal(RingBufferEndpointState.Stopped, stateReader.ProducerState);
 
-        SharedRingBuffer aborted = new(region);
+        SharedRingBuffer aborted = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
         aborted.Connect(RingBufferEndpointRole.Consumer);
         aborted.Abort();
         aborted.Dispose();
-        Assert.Equal(RingBufferEndpointState.Faulted, region.ReadEndpointState(RingBufferEndpointRole.Consumer));
+        Assert.Equal(RingBufferEndpointState.Faulted, stateReader.ConsumerState);
     }
 
     [Fact]
     public void UseAfterDisposeThrows()
     {
+        InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
-        using SharedMemoryRegion region = SharedMemoryRegion.CreateOrOpen(name, 4, 64);
-        SharedRingBuffer buffer = new(region);
+        using RingBufferRegion region = RingBufferRegion.CreateOrOpen(factory, name, 4, 64);
+        SharedRingBuffer buffer = new(region, ownsRegion: false);
         buffer.Connect(RingBufferEndpointRole.Producer);
         buffer.Dispose();
 
@@ -146,8 +148,9 @@ public class SharedRingBufferTests
     [Fact]
     public void PayloadLargerThanSlotThrows()
     {
+        InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
-        using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(name, 4, 64);
+        using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
         buffer.Connect(RingBufferEndpointRole.Producer);
 
         Assert.Throws<ArgumentOutOfRangeException>(() => buffer.TryWrite(0, new byte[buffer.MaxPayloadSize + 1]));
@@ -156,10 +159,12 @@ public class SharedRingBufferTests
     [Fact]
     public void OpenExistingFailsForMissingRegion()
     {
+        InMemoryMemoryRegionFactory factory = new();
         string name = NewName();
-        Assert.Throws<RingBufferTimeoutException>(() => SharedRingBuffer.OpenExisting(name, 4, 64, new SharedMemoryOptions
-        {
-            OpenTimeout = TimeSpan.FromMilliseconds(100),
-        }));
+        Assert.Throws<RingBufferTimeoutException>(() => SharedRingBuffer.OpenExisting(
+            factory, name, 4, 64, new SharedRingBufferOptions
+            {
+                OpenTimeout = TimeSpan.FromMilliseconds(100),
+            }));
     }
 }

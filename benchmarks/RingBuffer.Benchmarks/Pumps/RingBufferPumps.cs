@@ -1,5 +1,5 @@
+using Ipc.WindowsMemoryMapped;
 using RingBuffer.Core;
-using RingBuffer.SharedMemory;
 
 namespace RingBuffer.Benchmarks.Pumps;
 
@@ -33,8 +33,6 @@ public sealed class SpscArrayPump : TwoThreadPump
 
 public sealed class SpscSharedMemoryPump : TwoThreadPump
 {
-    private readonly SharedMemoryRegion _producerRegion;
-    private readonly SharedMemoryRegion _consumerRegion;
     private readonly SharedRingBuffer _producer;
     private readonly SharedRingBuffer _consumer;
 
@@ -42,10 +40,9 @@ public sealed class SpscSharedMemoryPump : TwoThreadPump
     {
         string name = "spsc-bench-" + Guid.NewGuid().ToString("N");
         int slotSize = SpscArrayPump.SlotSizeFor(payloadSize);
-        _producerRegion = SharedMemoryRegion.CreateOrOpen(name, Capacity, slotSize);
-        _consumerRegion = SharedMemoryRegion.CreateOrOpen(name, Capacity, slotSize);
-        _producer = new SharedRingBuffer(_producerRegion);
-        _consumer = new SharedRingBuffer(_consumerRegion);
+        WindowsNamedMemoryMappedRegionFactory factory = new();
+        _producer = SharedRingBuffer.OpenOrCreate(factory, name, Capacity, slotSize);
+        _consumer = SharedRingBuffer.OpenOrCreate(factory, name, Capacity, slotSize);
         _producer.Connect(RingBufferEndpointRole.Producer);
         _consumer.Connect(RingBufferEndpointRole.Consumer);
     }
@@ -61,7 +58,5 @@ public sealed class SpscSharedMemoryPump : TwoThreadPump
         base.Dispose();
         _producer.Dispose();
         _consumer.Dispose();
-        _producerRegion.Dispose();
-        _consumerRegion.Dispose();
     }
 }

@@ -9,7 +9,6 @@
     <Project Path="src/RingBuffer.Consumer/RingBuffer.Consumer.csproj" />
     <Project Path="src/RingBuffer.Core/RingBuffer.Core.csproj" />
     <Project Path="src/RingBuffer.Producer/RingBuffer.Producer.csproj" />
-    <Project Path="src/RingBuffer.SharedMemory/RingBuffer.SharedMemory.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RingBuffer.ConcurrencyTests/RingBuffer.ConcurrencyTests.csproj" />

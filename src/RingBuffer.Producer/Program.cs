@@ -1,9 +1,9 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
+using Ipc.WindowsMemoryMapped;
 using RingBuffer.Cli;
 using RingBuffer.Core;
-using RingBuffer.SharedMemory;
 
 namespace RingBuffer.Producer;
 
@@ -48,15 +48,18 @@ internal static class Program
 
     private static int Run(ProducerOptions options)
     {
-        SharedMemoryOptions memoryOptions = new()
-        {
-            OpenTimeout = options.OpenTimeout,
-            RecreateIfStale = options.RecreateStale,
-            RequireExisting = options.RequireExisting,
-        };
-
+        WindowsNamedMemoryMappedRegionFactory factory = new();
         using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(
-            options.Name, options.Capacity, options.EffectiveSlotSize, memoryOptions);
+            factory,
+            options.Name,
+            options.Capacity,
+            options.EffectiveSlotSize,
+            new SharedRingBufferOptions
+            {
+                OpenTimeout = options.OpenTimeout,
+                RecreateIfStale = options.RecreateStale,
+                RequireExisting = options.RequireExisting,
+            });
         buffer.Connect(RingBufferEndpointRole.Producer, options.Takeover);
 
         if (!options.Quiet)
