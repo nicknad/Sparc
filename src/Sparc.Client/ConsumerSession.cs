@@ -48,93 +48,30 @@ public sealed class ConsumerSession
         {
             // Sessions report cancellation as a structured result, never as an
             // exception (the role was not claimed).
-            return new ConsumerRunResult(
-                0, 0, TimeSpan.Zero, SessionStopReason.Cancelled, new LatencyHistogram(), null);
+            return Cancelled();
         }
 
-        byte[] destination = new byte[_buffer.MaxPayloadSize];
-        LatencyHistogram histogram = new();
+        ReadState state = new(_buffer.MaxPayloadSize);
         SpinWait spin = new();
-        long received = 0;
-        long receivedBytes = 0;
-        long expected = 0;
         long idleSince = 0;
         long cancellationCounter = 0;
         long idleTimeoutTicks = (long)(_options.IdleTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
         long progressInterval = _options.Count > 0 ? Math.Max(1, _options.Count / ProgressReports) : 0;
-        long firstMessageTimestamp = 0;
-        long lastMessageTimestamp = 0;
         long runStartTimestamp = _timeProvider.GetTimestamp();
         SessionStopReason reason = SessionStopReason.Completed;
-        string? failure = null;
 
-        // 0 = empty, 1 = received, -1 = verification failure (details in `failure`).
-        int ProcessOne()
+        while (_options.Count == 0 || state.Received < _options.Count)
         {
-            if (!_buffer.TryRead(destination, out int length, out int type))
-            {
-                return 0;
-            }
-
-            long now = _timeProvider.GetTimestamp();
-
-            if (_options.Verify)
-            {
-                if (length < RingBufferMessage.HeaderSize)
-                {
-                    failure = $"message {received} is only {length} bytes.";
-                    return -1;
-                }
-
-                long sequence = RingBufferMessage.ReadSequence(destination);
-                if (sequence != expected)
-                {
-                    failure = $"sequence mismatch at message {received}: expected {expected}, received {sequence}.";
-                    return -1;
-                }
-
-                if (type != _options.ExpectedType)
-                {
-                    failure = $"message {received} has type {type}, expected {_options.ExpectedType}.";
-                    return -1;
-                }
-
-                if (!RingBufferMessage.IsPayloadIntact(destination, length))
-                {
-                    failure = $"message {received} payload is corrupted.";
-                    return -1;
-                }
-
-                long sentTimestamp = RingBufferMessage.ReadTimestamp(destination);
-                if (sentTimestamp > 0)
-                {
-                    histogram.Record(now - sentTimestamp);
-                }
-            }
-
-            expected++;
-            received++;
-            receivedBytes += length;
-            if (firstMessageTimestamp == 0)
-            {
-                firstMessageTimestamp = now;
-            }
-
-            lastMessageTimestamp = now;
-            return 1;
-        }
-
-        while (_options.Count == 0 || received < _options.Count)
-        {
-            int result = ProcessOne();
+            int result = ProcessOne(state);
             if (result == 1)
             {
                 spin.Reset();
                 idleSince = 0;
 
-                if (progress is not null && progressInterval > 0 && received % progressInterval == 0)
+                if (progress is not null && progressInterval > 0 && state.Received % progressInterval == 0)
                 {
-                    progress.Report(new ConsumerProgress(received, receivedBytes, _timeProvider.GetElapsedTime(runStartTimestamp)));
+                    progress.Report(new ConsumerProgress(
+                        state.Received, state.ReceivedBytes, _timeProvider.GetElapsedTime(runStartTimestamp)));
                 }
 
                 if ((++cancellationCounter & CancellationCheckMask) == 0 && cancellationToken.IsCancellationRequested)
@@ -156,24 +93,7 @@ public sealed class ConsumerSession
             RingBufferEndpointState producer = _buffer.ProducerState;
             if (producer is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
             {
-                // Seeing a terminal state has acquire semantics, so any message the
-                // producer published before going away is now visible. Drain before
-                // declaring the stream finished.
-                int drain;
-                while ((drain = ProcessOne()) == 1)
-                {
-                }
-
-                if (drain == -1)
-                {
-                    reason = SessionStopReason.VerificationFailed;
-                }
-                else if (_options.Count > 0 && received < _options.Count)
-                {
-                    reason = SessionStopReason.PeerStopped;
-                    failure = $"producer stopped after {received} of {_options.Count} messages.";
-                }
-
+                reason = StopAfterPeerStopped(state);
                 break;
             }
 
@@ -191,23 +111,145 @@ public sealed class ConsumerSession
             else if (now - idleSince >= idleTimeoutTicks)
             {
                 reason = SessionStopReason.Timeout;
-                failure =
+                state.Failure =
                     $"no messages for {_options.IdleTimeout.TotalSeconds:F1}s " +
-                    $"(producer state={producer}, received={received}).";
+                    $"(producer state={producer}, received={state.Received}).";
                 break;
             }
 
             spin.SpinOnce();
         }
 
-        TimeSpan elapsed = received > 1 && firstMessageTimestamp != 0
-            ? _timeProvider.GetElapsedTime(firstMessageTimestamp, lastMessageTimestamp)
-            : _timeProvider.GetElapsedTime(runStartTimestamp);
+        TimeSpan elapsed = ComputeElapsed(state, runStartTimestamp);
 
         _logger.LogDebug(
             "Consumer session finished: received={Received} reason={Reason} elapsed={Elapsed}",
-            received, reason, elapsed);
+            state.Received, reason, elapsed);
 
-        return new ConsumerRunResult(received, receivedBytes, elapsed, reason, histogram, failure);
+        return new ConsumerRunResult(
+            state.Received, state.ReceivedBytes, elapsed, reason, state.Histogram, state.Failure);
+    }
+
+    /// <summary>
+    /// Reads and verifies one message. Returns 1 when a message was consumed,
+    /// 0 when the buffer is empty, and -1 when verification failed (the reason
+    /// is stored in <c>ReadState.Failure</c>).
+    /// </summary>
+    private int ProcessOne(ReadState state)
+    {
+        if (!_buffer.TryRead(state.Destination, out int length, out int type))
+        {
+            return 0;
+        }
+
+        long now = _timeProvider.GetTimestamp();
+
+        if (_options.Verify)
+        {
+            string? failure = Verify(state, length, type);
+            if (failure is not null)
+            {
+                state.Failure = failure;
+                return -1;
+            }
+
+            long sentTimestamp = RingBufferMessage.ReadTimestamp(state.Destination);
+            if (sentTimestamp > 0)
+            {
+                state.Histogram.Record(now - sentTimestamp);
+            }
+        }
+
+        state.Expected++;
+        state.Received++;
+        state.ReceivedBytes += length;
+        if (state.FirstMessageTimestamp == 0)
+        {
+            state.FirstMessageTimestamp = now;
+        }
+
+        state.LastMessageTimestamp = now;
+        return 1;
+    }
+
+    /// <summary>Returns a failure description, or null when the message is valid.</summary>
+    private string? Verify(ReadState state, int length, int type)
+    {
+        if (length < RingBufferMessage.HeaderSize)
+        {
+            return $"message {state.Received} is only {length} bytes.";
+        }
+
+        long sequence = RingBufferMessage.ReadSequence(state.Destination);
+        if (sequence != state.Expected)
+        {
+            return $"sequence mismatch at message {state.Received}: expected {state.Expected}, received {sequence}.";
+        }
+
+        if (type != _options.ExpectedType)
+        {
+            return $"message {state.Received} has type {type}, expected {_options.ExpectedType}.";
+        }
+
+        if (!RingBufferMessage.IsPayloadIntact(state.Destination, length))
+        {
+            return $"message {state.Received} payload is corrupted.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Drains messages published before the producer went away and classifies
+    /// the stop reason. Seeing a terminal producer state has acquire semantics,
+    /// so the drain cannot miss messages.
+    /// </summary>
+    private SessionStopReason StopAfterPeerStopped(ReadState state)
+    {
+        int drain;
+        while ((drain = ProcessOne(state)) == 1)
+        {
+        }
+
+        if (drain == -1)
+        {
+            return SessionStopReason.VerificationFailed;
+        }
+
+        if (_options.Count > 0 && state.Received < _options.Count)
+        {
+            state.Failure = $"producer stopped after {state.Received} of {_options.Count} messages.";
+            return SessionStopReason.PeerStopped;
+        }
+
+        return SessionStopReason.Completed;
+    }
+
+    private TimeSpan ComputeElapsed(ReadState state, long runStartTimestamp) =>
+        state.Received > 1 && state.FirstMessageTimestamp != 0
+            ? _timeProvider.GetElapsedTime(state.FirstMessageTimestamp, state.LastMessageTimestamp)
+            : _timeProvider.GetElapsedTime(runStartTimestamp);
+
+    private static ConsumerRunResult Cancelled() =>
+        new(0, 0, TimeSpan.Zero, SessionStopReason.Cancelled, new LatencyHistogram(), null);
+
+    /// <summary>Mutable counters for one run, kept out of the main loop body.</summary>
+    private sealed class ReadState(int maxPayloadSize)
+    {
+        public byte[] Destination { get; } = new byte[maxPayloadSize];
+
+        public LatencyHistogram Histogram { get; } = new();
+
+        public long Received { get; set; }
+
+        public long ReceivedBytes { get; set; }
+
+        public long Expected { get; set; }
+
+        public long FirstMessageTimestamp { get; set; }
+
+        public long LastMessageTimestamp { get; set; }
+
+        public string? Failure { get; set; }
     }
 }
