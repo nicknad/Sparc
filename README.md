@@ -46,7 +46,10 @@ Sparc.slnx
 │   ├── Sparc.Producer/        producer CLI (args → session → summary → exit code)
 │   └── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
 ├── samples/
-│   └── Sparc.WebApp/          minimal API + BackgroundService hosting both session roles
+│   ├── Sparc.WebApp/          minimal API + BackgroundService hosting both session roles
+│   ├── Sparc.YarpProxy/       YARP reverse proxy → bounded channel → SPARC producer
+│   ├── Sparc.YarpConsumer/    SPARC consumer that checks a captured header's median
+│   └── Sparc.YarpShared/      capture protocol shared by the two YARP samples
 ├── tests/
 │   ├── Sparc.UnitTests/       algorithm, region protocol, sessions (in-memory region factory)
 │   ├── Sparc.ConcurrencyTests/ 2 × 10,000,000 message two-thread verification
@@ -64,7 +67,7 @@ Sparc.Core
       ▲            ▲
 Sparc.Client  Sparc.WindowsMemoryMapped
       ▲                   ▲
-Sparc.Producer / Sparc.Consumer / samples/Sparc.WebApp (hosts)
+Sparc.Producer / Sparc.Consumer / samples/* (hosts)
 ```
 
 `Sparc.WindowsMemoryMapped` does not reference `Sparc.Core`; the ring protocol
@@ -213,6 +216,47 @@ SessionStopReason  { Completed, PeerStopped, Timeout, VerificationFailed, Cancel
 Testability: pass a custom `TimeProvider` and/or `ILogger` into the sessions, and
 swap `IIpcMemoryRegionFactory` for the in-memory test double to run the whole
 stack without the OS (see `tests/Sparc.UnitTests/Support`).
+
+### YARP reverse-proxy sample (`samples/Sparc.YarpProxy` + `samples/Sparc.YarpConsumer`)
+
+```powershell
+# terminal 1: SPARC consumer checking the median of a captured header
+dotnet run -c Release --project samples/Sparc.YarpConsumer -- --expected-median 999.5 --tolerance 50
+
+# terminal 2: YARP proxy + capture channel + SPARC producer (+ 2000 demo requests)
+dotnet run -c Release --project samples/Sparc.YarpProxy
+```
+
+```
+YARP proxy process                                     consumer process
+┌─────────────────────────────┐                        ┌──────────────────────────┐
+│ request pipeline            │                        │ SharedRingBuffer         │
+│   capture route + headers   │                        │   decode JSON captures   │
+│        │                    │                        │   parse --header values  │
+│        ▼                    │                        │   median / p95 / max     │
+│ bounded Channel<T>          │                        │        ▲                 │
+│        │                    │                        │        │                 │
+│        ▼                    │      shared ring       │        │                 │
+│ SPARC producer worker ──────┼────────────────────────┼────────┘                 │
+└─────────────────────────────┘                        └──────────────────────────┘
+```
+
+The proxy registers the transport with `AddWindowsNamedMemoryMappedIpc()` and adds a
+step to the YARP proxy pipeline (before session affinity/load balancing) that captures
+the matched route and the request headers: keys are lower-cased and both the header
+count (32) and each value's length (256 chars) are bounded. Captures go to a bounded
+in-process `Channel<T>` without blocking the proxied request; a `BackgroundService`
+drains it and try-writes JSON captures into the shared ring, counting captures dropped
+because the ring was full. An embedded `/echo` backend means no external service is
+needed, `GET /status` reports the capture/ring counters, and `--Sparc:DemoRequestCount=0`
+disables the built-in load generator so you can drive `/proxy/{**}` yourself.
+
+The consumer decodes each capture, parses the configured `--header` (default
+`x-sample-value`) as a number, keeps a capped sample list and prints median/p95/max
+every 5 s and at the end. `--expected-median` turns the final report into a PASS/FAIL
+check (exit code 1 on failure). Both samples use `SharedRingBuffer` directly rather than
+the session classes, because captures are variable-length JSON payloads; the sessions
+speak the fixed `[sequence][timestamp][fill]` protocol.
 
 ---
 
