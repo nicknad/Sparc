@@ -47,9 +47,10 @@ Sparc.slnx
 │   └── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
 ├── samples/
 │   ├── Sparc.WebApp/          minimal API + BackgroundService hosting both session roles
-│   ├── Sparc.YarpProxy/       YARP reverse proxy → bounded channel → SPARC producer
-│   ├── Sparc.YarpConsumer/    SPARC consumer that checks a captured header's median
-│   └── Sparc.YarpShared/      capture protocol shared by the two YARP samples
+│   └── yarp/
+│       ├── Sparc.YarpProxy/      YARP reverse proxy → bounded channel → SPARC producer
+│       ├── Sparc.YarpConsumer/   SPARC consumer that checks a captured header's median
+│       └── Sparc.YarpShared/     capture protocol shared by the two YARP samples
 ├── tests/
 │   ├── Sparc.UnitTests/       algorithm, region protocol, sessions (in-memory region factory)
 │   ├── Sparc.ConcurrencyTests/ 2 × 10,000,000 message two-thread verification
@@ -217,14 +218,14 @@ Testability: pass a custom `TimeProvider` and/or `ILogger` into the sessions, an
 swap `IIpcMemoryRegionFactory` for the in-memory test double to run the whole
 stack without the OS (see `tests/Sparc.UnitTests/Support`).
 
-### YARP reverse-proxy sample (`samples/Sparc.YarpProxy` + `samples/Sparc.YarpConsumer`)
+### YARP reverse-proxy sample (`samples/yarp/Sparc.YarpProxy` + `samples/yarp/Sparc.YarpConsumer`)
 
 ```powershell
 # terminal 1: SPARC consumer checking the median of a captured header
-dotnet run -c Release --project samples/Sparc.YarpConsumer -- --expected-median 999.5 --tolerance 50
+dotnet run -c Release --project samples/yarp/Sparc.YarpConsumer -- --expected-median 999.5 --tolerance 50
 
 # terminal 2: YARP proxy + capture channel + SPARC producer (+ 2000 demo requests)
-dotnet run -c Release --project samples/Sparc.YarpProxy
+dotnet run -c Release --project samples/yarp/Sparc.YarpProxy
 ```
 
 ```

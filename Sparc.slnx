@@ -4,8 +4,8 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Sparc.WebApp/Sparc.WebApp.csproj" />
-    <Project Path="samples/Sparc.YarpProxy/Sparc.YarpProxy.csproj" />
-    <Project Path="samples/Sparc.YarpConsumer/Sparc.YarpConsumer.csproj" />
+    <Project Path="samples/yarp/Sparc.YarpProxy/Sparc.YarpProxy.csproj" />
+    <Project Path="samples/yarp/Sparc.YarpConsumer/Sparc.YarpConsumer.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Sparc.Abstractions/Sparc.Abstractions.csproj" />
