@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Sparc;
 
 namespace Sparc.Core;
@@ -62,6 +63,7 @@ public sealed class SharedRingBuffer : IRingBuffer, IDisposable
         // invariant cachedHead <= head both hold.
         _cachedHead = Volatile.Read(ref region.HeadRef);
         _cachedTail = Volatile.Read(ref region.TailRef);
+        Debug.Assert(_cachedTail >= _cachedHead);
     }
 
     /// <summary>Creates the region if needed, otherwise joins the existing one.</summary>
@@ -184,7 +186,16 @@ public sealed class SharedRingBuffer : IRingBuffer, IDisposable
             }
         }
 
+        // Invariants: cursors are monotonic, the cached peer cursor is never
+        // ahead of the real one, and the target slot is inside the region.
+        Debug.Assert(tail >= head);
+        Debug.Assert(tail - head < Capacity);
+        Debug.Assert(_cachedHead <= Volatile.Read(ref _region.HeadRef));
         int offset = (int)(tail & _mask) * SlotSize;
+        Debug.Assert((uint)(tail & _mask) < (uint)Capacity);
+        Debug.Assert(offset >= 0);
+        Debug.Assert((long)offset + SlotSize <= _region.Size - RingBufferLayout.HeaderSize);
+
         unsafe
         {
             SlotFraming.Write(new Span<byte>(_slots + offset, SlotSize), type, payload);
@@ -225,7 +236,15 @@ public sealed class SharedRingBuffer : IRingBuffer, IDisposable
             }
         }
 
+        // Invariants: data is available, the cached peer cursor is never ahead
+        // of the real one, and the source slot is inside the region.
+        Debug.Assert(tail > head);
+        Debug.Assert(_cachedTail <= Volatile.Read(ref _region.TailRef));
         int offset = (int)(head & _mask) * SlotSize;
+        Debug.Assert((uint)(head & _mask) < (uint)Capacity);
+        Debug.Assert(offset >= 0);
+        Debug.Assert((long)offset + SlotSize <= _region.Size - RingBufferLayout.HeaderSize);
+
         unsafe
         {
             SlotFraming.Read(new ReadOnlySpan<byte>(_slots + offset, SlotSize), destination, out bytesRead, out type);

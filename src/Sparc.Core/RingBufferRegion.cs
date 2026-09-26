@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Sparc;
 
@@ -40,6 +41,10 @@ public sealed class RingBufferRegion : IDisposable
             }
 
             Header = ReadHeader();
+
+            // Postcondition: both the create and the open path end with a
+            // published, valid header snapshot.
+            Debug.Assert(Header.Magic == RingBufferLayout.Magic);
             Capacity = Header.Capacity;
             SlotSize = Header.SlotSize;
             MaxPayloadSize = Header.MaxPayloadSize;
@@ -231,6 +236,12 @@ public sealed class RingBufferRegion : IDisposable
         // the geometry and the zeroed cursors.
         header.WriteTo(span, includeMagic: false);
         Volatile.Write(ref Unsafe.AsRef<ulong>(_region.Pointer + RingBufferLayout.MagicOffset), RingBufferLayout.Magic);
+
+        // Postcondition: the magic published last is observable with the full
+        // geometry behind it.
+        RingBufferHeader published = RingBufferHeader.Read(new ReadOnlySpan<byte>(_region.Pointer, RingBufferLayout.HeaderSize));
+        Debug.Assert(published.Magic == RingBufferLayout.Magic);
+        Debug.Assert(published.Capacity == capacity && published.SlotSize == slotSize);
     }
 
     private unsafe void OpenAndValidate(
@@ -278,5 +289,8 @@ public sealed class RingBufferRegion : IDisposable
                 $"Region '{Name}' maps {_region.Size} bytes but its header declares " +
                 $"{RingBufferLayout.RequiredSize(header.Capacity, header.SlotSize)} bytes.");
         }
+
+        // Postcondition: the mapping covers the declared geometry.
+        Debug.Assert(_region.Size >= RingBufferLayout.RequiredSize(header.Capacity, header.SlotSize));
     }
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Sparc.Core;
@@ -72,6 +73,7 @@ public sealed class SpscRingBuffer : IRingBuffer
         MaxPayloadSize = RingBufferLayout.MaxPayloadSizeFor(slotSize);
         _mask = capacity - 1;
         _buffer = GC.AllocateArray<byte>(checked(capacity * slotSize), pinned: true);
+        Debug.Assert(_buffer.Length == capacity * slotSize);
     }
 
     /// <inheritdoc />
@@ -123,7 +125,16 @@ public sealed class SpscRingBuffer : IRingBuffer
             }
         }
 
-        Span<byte> slot = _buffer.AsSpan((int)(tail & _mask) * SlotSize, SlotSize);
+        // Invariants: cursors are monotonic, the cached peer cursor is never
+        // ahead of the real one, and the target slot is inside the array.
+        Debug.Assert(tail >= head);
+        Debug.Assert(tail - head < Capacity);
+        Debug.Assert(_cachedHead <= Volatile.Read(ref _head.Value));
+        int slotIndex = (int)(tail & _mask);
+        Debug.Assert((uint)slotIndex < (uint)Capacity);
+        Debug.Assert(slotIndex * SlotSize + SlotSize <= _buffer.Length);
+
+        Span<byte> slot = _buffer.AsSpan(slotIndex * SlotSize, SlotSize);
         SlotFraming.Write(slot, type, payload);
 
         // Release: the slot bytes above must be visible before the consumer can
@@ -159,7 +170,15 @@ public sealed class SpscRingBuffer : IRingBuffer
             }
         }
 
-        ReadOnlySpan<byte> slot = _buffer.AsSpan((int)(head & _mask) * SlotSize, SlotSize);
+        // Invariants: data is available, the cached peer cursor is never ahead
+        // of the real one, and the source slot is inside the array.
+        Debug.Assert(tail > head);
+        Debug.Assert(_cachedTail <= Volatile.Read(ref _tail.Value));
+        int slotIndex = (int)(head & _mask);
+        Debug.Assert((uint)slotIndex < (uint)Capacity);
+        Debug.Assert(slotIndex * SlotSize + SlotSize <= _buffer.Length);
+
+        ReadOnlySpan<byte> slot = _buffer.AsSpan(slotIndex * SlotSize, SlotSize);
         SlotFraming.Read(slot, destination, out bytesRead, out type);
 
         // Release: the producer must not overwrite this slot before the copy above
