@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Sparc.WebApp</RootNamespace>
+    <AssemblyName>Sparc.WebApp</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sparc.Core\Sparc.Core.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Client\Sparc.Client.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.WindowsMemoryMapped\Sparc.WindowsMemoryMapped.csproj" />
+  </ItemGroup>
+
+</Project>

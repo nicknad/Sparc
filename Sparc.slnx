@@ -2,6 +2,9 @@
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/Sparc.Benchmarks/Sparc.Benchmarks.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Sparc.WebApp/Sparc.WebApp.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Sparc.Abstractions/Sparc.Abstractions.csproj" />
     <Project Path="src/Sparc.WindowsMemoryMapped/Sparc.WindowsMemoryMapped.csproj" />
