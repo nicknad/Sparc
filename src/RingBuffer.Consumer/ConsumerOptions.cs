@@ -1,11 +1,12 @@
 using RingBuffer.Cli;
+using RingBuffer.Client;
 using RingBuffer.Core;
 
 namespace RingBuffer.Consumer;
 
 internal sealed class ConsumerOptions
 {
-    public const int MessageHeaderBytes = 16; // [sequence:8][timestamp:8]
+    public const int MessageHeaderBytes = RingBufferMessage.HeaderSize;
 
     public string Name { get; private set; } = string.Empty;
     public long Count { get; private set; } // 0 = consume until the producer stops

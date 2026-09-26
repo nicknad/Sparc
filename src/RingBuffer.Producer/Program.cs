@@ -1,8 +1,7 @@
-using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Globalization;
 using Ipc.WindowsMemoryMapped;
 using RingBuffer.Cli;
+using RingBuffer.Client;
 using RingBuffer.Core;
 
 namespace RingBuffer.Producer;
@@ -60,7 +59,6 @@ internal static class Program
                 RecreateIfStale = options.RecreateStale,
                 RequireExisting = options.RequireExisting,
             });
-        buffer.Connect(RingBufferEndpointRole.Producer, options.Takeover);
 
         if (!options.Quiet)
         {
@@ -69,67 +67,50 @@ internal static class Program
                 $"slotSize={buffer.SlotSize} maxPayload={buffer.MaxPayloadSize}");
         }
 
-        byte[] payload = new byte[options.Size];
-        if (options.Size > ProducerOptions.MessageHeaderBytes)
+        using CancellationTokenSource cancellation = new();
+        Console.CancelKeyPress += (_, eventArgs) =>
         {
-            payload.AsSpan(ProducerOptions.MessageHeaderBytes).Fill(0xA5);
+            eventArgs.Cancel = true;
+            cancellation.Cancel();
+        };
+
+        ProducerSession session = new(buffer, new ProducerSessionOptions
+        {
+            Count = options.Count,
+            PayloadSize = options.Size,
+            MessageType = options.Type,
+            FullTimeout = options.FullTimeout,
+            Takeover = options.Takeover,
+        });
+
+        ProducerRunResult result = session.Run(cancellation.Token);
+        PrintSummary(result);
+
+        if (result.FailureMessage is not null)
+        {
+            Console.Error.WriteLine($"error: {result.FailureMessage}");
         }
 
-        long fullTimeoutTicks = (long)(options.FullTimeout.TotalSeconds * Stopwatch.Frequency);
-        SpinWait spin = new();
-        long produced = 0;
-        long fullSince = 0;
-
-        long startTimestamp = Stopwatch.GetTimestamp();
-        while (produced < options.Count)
-        {
-            BinaryPrimitives.WriteInt64LittleEndian(payload, produced);
-            BinaryPrimitives.WriteInt64LittleEndian(payload.AsSpan(8), Stopwatch.GetTimestamp());
-
-            if (buffer.TryWrite(options.Type, payload))
-            {
-                produced++;
-                fullSince = 0;
-                spin.Reset();
-                continue;
-            }
-
-            long now = Stopwatch.GetTimestamp();
-            if (fullSince == 0)
-            {
-                fullSince = now;
-            }
-            else if (now - fullSince >= fullTimeoutTicks)
-            {
-                RingBufferEndpointState consumer = buffer.ConsumerState;
-                if (consumer is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
-                {
-                    Console.Error.WriteLine(
-                        $"error: consumer is gone (state={consumer}) with {options.Count - produced} messages unsent.");
-                    return RingBufferExitCodes.Incomplete;
-                }
-
-                Console.Error.WriteLine(
-                    $"error: buffer stayed full for {options.FullTimeout.TotalSeconds:F1}s " +
-                    $"({options.Count - produced} messages unsent, consumer state={consumer}).");
-                return RingBufferExitCodes.Timeout;
-            }
-
-            spin.SpinOnce();
-        }
-
-        double elapsedSeconds = Stopwatch.GetElapsedTime(startTimestamp).TotalSeconds;
-        PrintSummary(options, produced, elapsedSeconds);
-        return RingBufferExitCodes.Success;
+        return MapReason(result.Reason);
     }
 
-    private static void PrintSummary(ProducerOptions options, long produced, double elapsedSeconds)
+    private static int MapReason(SessionStopReason reason) => reason switch
     {
-        double messagesPerSecond = elapsedSeconds > 0 ? produced / elapsedSeconds : 0;
-        double megabytesPerSecond = messagesPerSecond * options.Size / (1024.0 * 1024.0);
+        SessionStopReason.Completed => RingBufferExitCodes.Success,
+        SessionStopReason.PeerStopped => RingBufferExitCodes.Incomplete,
+        SessionStopReason.Timeout => RingBufferExitCodes.Timeout,
+        SessionStopReason.Cancelled => RingBufferExitCodes.Incomplete,
+        _ => RingBufferExitCodes.InternalError,
+    };
+
+    private static void PrintSummary(ProducerRunResult result)
+    {
+        double seconds = result.Elapsed.TotalSeconds;
+        double messagesPerSecond = seconds > 0 ? result.Produced / seconds : 0;
+        double megabytesPerSecond = messagesPerSecond * result.PayloadSize / (1024.0 * 1024.0);
 
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"produced={produced} payloadSize={options.Size} elapsed={elapsedSeconds:F3}s " +
+            $"produced={result.Produced} payloadSize={result.PayloadSize} elapsed={seconds:F3}s " +
             $"throughput={messagesPerSecond:F0} msg/s dataThroughput={megabytesPerSecond:F1} MiB/s"));
     }
 }
