@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RingBuffer.Consumer</RootNamespace>
+    <AssemblyName>RingBuffer.Consumer</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\CommandLine.cs" Link="CommandLine.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RingBuffer.SharedMemory\RingBuffer.SharedMemory.csproj" />
+  </ItemGroup>
+
+</Project>
