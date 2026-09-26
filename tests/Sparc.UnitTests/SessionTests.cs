@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Sparc.Client;
 using Sparc.Core;
-using Sparc.UnitTests.Support;
+using Sparc.InMemory;
 
 namespace Sparc.UnitTests;
 

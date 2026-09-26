@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net11.0</TargetFrameworks>
+    <RootNamespace>Sparc.InMemory</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Description>Pinned managed-array implementation of IIpcMemoryRegionFactory: exercises the whole ring/session stack on any OS without memory-mapped files, for tests and single-process development (no persistence, no cross-process visibility).</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sparc.Abstractions\Sparc.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

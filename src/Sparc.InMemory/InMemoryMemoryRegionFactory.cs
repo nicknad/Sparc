@@ -3,21 +3,41 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Sparc;
 
-namespace Sparc.UnitTests.Support;
+namespace Sparc.InMemory;
 
 /// <summary>
-/// Test-only <see cref="IIpcMemoryRegionFactory"/> backed by pinned managed
-/// arrays. It lets the ring protocol layer be exercised on any OS without
-/// memory-mapped files; it deliberately has no persistence and no cross-process
-/// visibility.
+/// <see cref="IIpcMemoryRegionFactory"/> implementation backed by pinned
+/// managed arrays instead of an operating-system mapping. It lets the ring
+/// protocol and the session layer be exercised on any OS without
+/// memory-mapped files.
 /// </summary>
-internal sealed class InMemoryMemoryRegionFactory : IIpcMemoryRegionFactory
+/// <remarks>
+/// <para>
+/// Regions are process-local and scoped to one factory instance: another
+/// factory instance (in this or any other process) does not see them, and
+/// nothing survives the process. Use it for tests, samples and
+/// single-process development; it is not a transport between processes.
+/// </para>
+/// <para>
+/// Backing arrays are pinned for the lifetime of the process so a
+/// <see cref="IIpcMemoryRegion.Pointer"/> never goes stale, including across
+/// <see cref="TryReset"/>. The retained memory is bounded by the number and
+/// size of the regions a process creates.
+/// </para>
+/// <para>
+/// The factory is thread-safe and intended to be registered once as a
+/// singleton.
+/// </para>
+/// </remarks>
+public sealed class InMemoryMemoryRegionFactory : IIpcMemoryRegionFactory
 {
     private readonly ConcurrentDictionary<string, byte[]> _regions = new(StringComparer.Ordinal);
     private readonly ConcurrentBag<GCHandle> _pins = [];
 
+    /// <inheritdoc />
     public bool IsSupported => true;
 
+    /// <inheritdoc />
     public IIpcMemoryRegion CreateOrOpen(string name, long size, IpcRegionOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
@@ -40,10 +60,12 @@ internal sealed class InMemoryMemoryRegionFactory : IIpcMemoryRegionFactory
             return new Region(name, fresh, isCreator: true);
         }
 
+        // Lost the create race to another caller; join the winner's buffer.
         _regions.TryGetValue(name, out byte[]? winner);
         return new Region(name, winner!, isCreator: false);
     }
 
+    /// <inheritdoc />
     public IIpcMemoryRegion OpenExisting(string name, IpcRegionOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
@@ -65,6 +87,13 @@ internal sealed class InMemoryMemoryRegionFactory : IIpcMemoryRegionFactory
         return new Region(name, buffer, isCreator: false);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Removes the region so the next <see cref="CreateOrOpen"/> starts from a
+    /// zero-filled buffer. The removed buffer stays pinned: existing region
+    /// instances keep valid pointers, and callers must still be sure no live
+    /// participant is using the region.
+    /// </remarks>
     public bool TryReset(string name) => _regions.TryRemove(name, out _);
 
     private byte[] Allocate(long size)
@@ -92,12 +121,15 @@ internal sealed class InMemoryMemoryRegionFactory : IIpcMemoryRegionFactory
 
         public long Size => _buffer.Length;
 
-        public unsafe byte* Pointer =>
-            (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_buffer));
-
-        public void Dispose()
+        public unsafe byte* Pointer
         {
-            Interlocked.Exchange(ref _disposed, 1);
+            get
+            {
+                ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+                return (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(_buffer));
+            }
         }
+
+        public void Dispose() => Interlocked.Exchange(ref _disposed, 1);
     }
 }

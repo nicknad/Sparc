@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Sparc.UnitTests.Support;
+using Sparc.InMemory;
 using Sparc.WindowsMemoryMapped;
 
 namespace Sparc.UnitTests;

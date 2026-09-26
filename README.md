@@ -42,6 +42,7 @@ Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in
 ├── Sparc.Samples.slnx        samples solution: samples/ (intentionally not in Sparc.slnx)
 ├── src/
 │   ├── Sparc.Abstractions/           IIpcMemoryRegionFactory / IIpcMemoryRegion, options, exceptions
+│   ├── Sparc.InMemory/               pinned managed-array factory for tests and single-process development
 │   ├── Sparc.WindowsMemoryMapped/    Windows named memory-mapped implementation + DI registration
 │   ├── Sparc.Core/            ring protocol: layout/header/framing, SpscRingBuffer, SharedRingBuffer
 │   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
@@ -54,7 +55,7 @@ Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in
 │       ├── Sparc.YarpConsumer/   SPARC consumer that checks a captured header's median
 │       └── Sparc.YarpShared/     capture protocol shared by the two YARP samples
 ├── tests/
-│   ├── Sparc.UnitTests/       algorithm, region protocol, sessions (in-memory region factory)
+│   ├── Sparc.UnitTests/       algorithm, region protocol, sessions (on Sparc.InMemory)
 │   ├── Sparc.ConcurrencyTests/ 2 × 10,000,000 message two-thread verification
 │   └── Sparc.ProcessTests/    two real processes: lifecycle, conflicts, kill tests
 └── benchmarks/
@@ -65,16 +66,16 @@ Dependency graph (arrows = project reference):
 
 ```
 Sparc.Abstractions
-      ▲
-Sparc.Core
+      ▲                     ▲
+Sparc.Core            Sparc.InMemory
       ▲            ▲
 Sparc.Client  Sparc.WindowsMemoryMapped
       ▲                   ▲
 Sparc.Producer / Sparc.Consumer / samples/* (hosts)
 ```
 
-`Sparc.WindowsMemoryMapped` does not reference `Sparc.Core`; the ring protocol
-does not reference any OS type.
+`Sparc.WindowsMemoryMapped` and `Sparc.InMemory` do not reference `Sparc.Core`;
+the ring protocol does not reference any OS type.
 
 ---
 
@@ -143,6 +144,7 @@ Reference the projects (or packages once published) you need:
 | Library | Use when |
 |---|---|
 | `Sparc.Abstractions` | you only need the OS abstraction contracts |
+| `Sparc.InMemory` | you want the whole ring/session stack without the OS (tests, samples, single-process development) |
 | `Sparc.WindowsMemoryMapped` | you run on Windows and want named memory-mapped regions (+ DI) |
 | `Sparc.Core` | you need the buffer (`SpscRingBuffer`, `SharedRingBuffer`) |
 | `Sparc.Client` | you need producer/consumer sessions and verification |
@@ -220,8 +222,8 @@ SessionStopReason  { Completed, PeerStopped, Timeout, VerificationFailed, Cancel
 ```
 
 Testability: pass a custom `TimeProvider` and/or `ILogger` into the sessions, and
-swap `IIpcMemoryRegionFactory` for the in-memory test double to run the whole
-stack without the OS (see `tests/Sparc.UnitTests/Support`).
+swap `IIpcMemoryRegionFactory` for `Sparc.InMemory.InMemoryMemoryRegionFactory`
+to run the whole stack without the OS.
 
 ### YARP reverse-proxy sample (`samples/yarp/Sparc.YarpProxy` + `samples/yarp/Sparc.YarpConsumer`)
 
@@ -458,9 +460,9 @@ dotnet test Sparc.slnx -c Release        # .NET 11 SDK + Microsoft.Testing.Platf
   validation, region creation/join/version/geometry/corruption, role conflicts and
   takeover, endpoint states, histogram math, DI registration, cancellation while a
   blocking write is full, and session semantics (completion, timeouts, peer-stopped
-  drain, verification failure, cancellation). Region protocol tests run against an
-  in-memory `IIpcMemoryRegionFactory`, so they are OS-independent; Windows factory
-  tests are guarded by `OperatingSystem.IsWindows()`.
+  drain, verification failure, cancellation). Region protocol tests run against the
+  `Sparc.InMemory` factory, so they are OS-independent; Windows factory tests are
+  guarded by `OperatingSystem.IsWindows()`.
 * **ConcurrencyTests.** Two dedicated threads move **10,000,000 messages** per transport,
   with sequence + checksum + fill-byte verification on every message, for both the
   in-process array buffer and the shared-memory buffer (two views of one region). A
@@ -537,8 +539,8 @@ Caveats worth knowing before quoting any of this:
 
 Not implemented (deliberately): MPSC/MPMC, dynamic resizing, variable-sized records,
 persistence, networking, compression, encryption, multiple consumers/producers, heartbeats
-or automatic crash detection, and Unix file-backed regions (only the abstraction and the
-Windows implementation exist today; an in-memory factory ships in the test project).
+or automatic crash detection, and Unix file-backed regions (the abstraction, the Windows
+named-map implementation and the `Sparc.InMemory` development factory ship today).
 
 The learning objective is the one this project exercises end to end:
 

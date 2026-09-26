@@ -2,7 +2,7 @@ using System.IO.MemoryMappedFiles;
 using Sparc;
 using Sparc.WindowsMemoryMapped;
 using Sparc.Core;
-using Sparc.UnitTests.Support;
+using Sparc.InMemory;
 
 namespace Sparc.UnitTests;
 
