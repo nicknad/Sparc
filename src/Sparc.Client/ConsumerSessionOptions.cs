@@ -17,6 +17,13 @@ public sealed class ConsumerSessionOptions
     /// <summary>Give up when no messages arrive for this long.</summary>
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Optional pause between consumed messages; <see cref="TimeSpan.Zero"/>
+    /// disables pacing. Intended for tests/benchmarks that simulate a slow
+    /// consumer (backpressure), not for production rate limiting.
+    /// </summary>
+    public TimeSpan PerMessageDelay { get; init; }
+
     /// <summary>Claim the consumer role from a crashed peer.</summary>
     public bool Takeover { get; init; }
 }

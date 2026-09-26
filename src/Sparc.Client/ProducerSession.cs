@@ -57,6 +57,7 @@ public sealed class ProducerSession
         RingBufferMessage.FillPayload(payload);
 
         long fullTimeoutTicks = (long)(_options.FullTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
+        long pacingTicks = MessagePacer.TicksFor(_timeProvider, _options.PerMessageDelay);
         long progressInterval = Math.Max(1, _options.Count / ProgressReports);
         SpinWait spin = new();
         long produced = 0;
@@ -75,6 +76,7 @@ public sealed class ProducerSession
                 produced++;
                 fullSince = 0;
                 spin.Reset();
+                MessagePacer.Wait(_timeProvider, startTimestamp, produced, pacingTicks);
 
                 if (progress is not null && produced % progressInterval == 0)
                 {

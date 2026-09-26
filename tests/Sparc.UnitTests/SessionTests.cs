@@ -167,6 +167,59 @@ public class SessionTests
     }
 
     [Fact]
+    public async Task PacedProducerAndConsumerStillComplete()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 64, 64);
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 64, 64);
+
+        ConsumerSession consumer = new(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 100,
+            IdleTimeout = TimeSpan.FromSeconds(10),
+        });
+
+        Task<ConsumerRunResult> consumerTask = Task.Run(
+            () => consumer.Run(TestContext.Current.CancellationToken),
+            TestContext.Current.CancellationToken);
+
+        ProducerRunResult producerResult = new ProducerSession(producerBuffer, new ProducerSessionOptions
+        {
+            Count = 100,
+            PayloadSize = 32,
+            PerMessageDelay = TimeSpan.FromMilliseconds(1),
+            FullTimeout = TimeSpan.FromSeconds(10),
+        }).Run(TestContext.Current.CancellationToken);
+
+        ConsumerRunResult consumerResult = await consumerTask;
+
+        Assert.Equal(SessionStopReason.Completed, producerResult.Reason);
+        Assert.Equal(100, producerResult.Produced);
+        Assert.Equal(SessionStopReason.Completed, consumerResult.Reason);
+        Assert.Equal(100, consumerResult.Received);
+    }
+
+    [Fact]
+    public void SessionsRejectNegativePacing()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, NewName(), 16, 64);
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, NewName(), 16, 64);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ProducerSession(producerBuffer, new ProducerSessionOptions
+        {
+            PayloadSize = 32,
+            PerMessageDelay = TimeSpan.FromMilliseconds(-1),
+        }));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
+        {
+            PerMessageDelay = TimeSpan.FromMilliseconds(-1),
+        }));
+    }
+
+    [Fact]
     public void ConsumerHonoursCancellation()
     {
         InMemoryMemoryRegionFactory factory = new();

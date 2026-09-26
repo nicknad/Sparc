@@ -17,6 +17,13 @@ public sealed class ProducerSessionOptions
     /// <summary>Abort when the buffer stays full this long (the consumer may be gone).</summary>
     public TimeSpan FullTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// Optional pause between published messages; <see cref="TimeSpan.Zero"/>
+    /// disables pacing. Intended for tests/benchmarks that simulate a slow
+    /// producer; production pacing belongs in the caller's own scheduling.
+    /// </summary>
+    public TimeSpan PerMessageDelay { get; init; }
+
     /// <summary>Claim the producer role from a crashed peer.</summary>
     public bool Takeover { get; init; }
 
@@ -24,6 +31,7 @@ public sealed class ProducerSessionOptions
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(Count, 1);
         ArgumentOutOfRangeException.ThrowIfLessThan(PayloadSize, RingBufferMessage.HeaderSize);
+        ArgumentOutOfRangeException.ThrowIfLessThan(PerMessageDelay, TimeSpan.Zero);
         if (PayloadSize > maxPayloadSize)
         {
             throw new ArgumentOutOfRangeException(

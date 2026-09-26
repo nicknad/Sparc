@@ -4,19 +4,22 @@ using System.Text;
 namespace Sparc.Client.Diagnostics;
 
 /// <summary>
-/// Allocation-free log2-bucketed latency histogram. Values are recorded in
+/// Allocation-free latency histogram. Values are recorded in
 /// <see cref="System.Diagnostics.Stopwatch"/> ticks and reported in microseconds.
 /// </summary>
 /// <remarks>
-/// Bucket <c>i</c> covers <c>[2^(i-1), 2^i)</c> ticks, so percentiles are
-/// approximate by at most a factor of two — plenty for p50/p95/p99 tracking
+/// Each power-of-two range <c>[2^e, 2^(e+1))</c> is split into
+/// <see cref="SubBucketCount"/> equal sub-buckets, so percentiles are
+/// approximate by at most <c>1/16</c> of the value (about 6%) instead of the
+/// 2× error of pure log2 buckets — enough for p50/p90/p99/p99.9 tracking
 /// without storing every sample.
 /// </remarks>
 public sealed class LatencyHistogram
 {
-    private const int BucketCount = 64;
+    private const int MagnitudeCount = 64;
+    private const int SubBucketCount = 16;
 
-    private readonly long[] _buckets = new long[BucketCount];
+    private readonly long[] _buckets = new long[MagnitudeCount * SubBucketCount];
     private long _total;
     private long _sum;
     private long _min = long.MaxValue;
@@ -46,11 +49,7 @@ public sealed class LatencyHistogram
             ticks = 0;
         }
 
-        int bucket = ticks == 0
-            ? 0
-            : (int)Math.Min(BitOperations.Log2((ulong)ticks) + 1, BucketCount - 1);
-
-        _buckets[bucket]++;
+        _buckets[IndexFor(ticks)]++;
         _total++;
         _sum += ticks;
         if (ticks < _min)
@@ -74,12 +73,12 @@ public sealed class LatencyHistogram
 
         long target = (long)Math.Ceiling(percentile * _total);
         long cumulative = 0;
-        for (int i = 0; i < BucketCount; i++)
+        for (int i = 0; i < _buckets.Length; i++)
         {
             cumulative += _buckets[i];
             if (cumulative >= target)
             {
-                return i == 0 ? 0 : 1L << (i - 1);
+                return LowerBoundTicks(i);
             }
         }
 
@@ -95,17 +94,55 @@ public sealed class LatencyHistogram
         }
 
         double toMicros = 1_000_000.0 / stopwatchFrequency;
-        StringBuilder sb = new(160);
+        StringBuilder sb = new(200);
         sb.Append("latency(us): ");
         sb.Append("min=").Append(Format(MinTicks * toMicros));
         sb.Append(" mean=").Append(Format(MeanTicks * toMicros));
         sb.Append(" p50=").Append(Format(PercentileTicks(0.50) * toMicros));
+        sb.Append(" p90=").Append(Format(PercentileTicks(0.90) * toMicros));
         sb.Append(" p95=").Append(Format(PercentileTicks(0.95) * toMicros));
         sb.Append(" p99=").Append(Format(PercentileTicks(0.99) * toMicros));
+        sb.Append(" p99.9=").Append(Format(PercentileTicks(0.999) * toMicros));
         sb.Append(" max=").Append(Format(MaxTicks * toMicros));
         sb.Append(" (n=").Append(_total).Append(')');
         return sb.ToString();
 
         static string Format(double value) => value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static int IndexFor(long ticks)
+    {
+        if (ticks <= 0)
+        {
+            return 0;
+        }
+
+        int magnitude = Math.Min(BitOperations.Log2((ulong)ticks), MagnitudeCount - 2);
+        long power = 1L << magnitude;
+        int sub = magnitude >= 4
+            ? (int)((ticks - power) >> (magnitude - 4))
+            : (int)((ticks - power) * SubBucketCount / power);
+        if (sub >= SubBucketCount)
+        {
+            sub = SubBucketCount - 1;
+        }
+
+        return magnitude * SubBucketCount + sub;
+    }
+
+    private static long LowerBoundTicks(int index)
+    {
+        if (index == 0)
+        {
+            return 0;
+        }
+
+        int magnitude = index / SubBucketCount;
+        int sub = index % SubBucketCount;
+        long power = 1L << magnitude;
+
+        // power + power * sub / 16, computed in a way that cannot overflow
+        // even for the largest magnitude (2^62 * 15 does not fit in a long).
+        return power + power / SubBucketCount * sub + power % SubBucketCount * sub / SubBucketCount;
     }
 }

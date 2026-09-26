@@ -80,6 +80,7 @@ internal static class Program
             PayloadSize = options.Size,
             MessageType = options.Type,
             FullTimeout = options.FullTimeout,
+            PerMessageDelay = options.Delay,
             Takeover = options.Takeover,
         });
 

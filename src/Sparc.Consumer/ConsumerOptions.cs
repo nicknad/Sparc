@@ -15,6 +15,7 @@ internal sealed class ConsumerOptions
     public int Type { get; private set; } = 1;
     public TimeSpan OpenTimeout { get; private set; } = TimeSpan.FromSeconds(10);
     public TimeSpan IdleTimeout { get; private set; } = TimeSpan.FromSeconds(5);
+    public TimeSpan Delay { get; private set; }
     public bool Takeover { get; private set; }
     public bool RecreateStale { get; private set; }
     public bool RequireExisting { get; private set; }
@@ -39,6 +40,7 @@ internal sealed class ConsumerOptions
           --type <int>             Expected message type tag (default: 1).
           --open-timeout <ms>      Wait for the region to appear (default: 10000).
           --idle-timeout <ms>      Abort when no messages arrive for this long (default: 5000).
+          --delay-us <us>          Pause between consumed messages (slow-consumer/backpressure simulation, default: 0).
           --takeover               Claim the consumer role from a crashed peer.
           --recreate-stale         Delete and recreate an incompatible/stale region (destructive).
           --require-existing       Never create the region; fail if it does not exist.
@@ -84,6 +86,9 @@ internal sealed class ConsumerOptions
                     break;
                 case "--idle-timeout":
                     options.IdleTimeout = TimeSpan.FromMilliseconds(ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: 1));
+                    break;
+                case "--delay-us":
+                    options.Delay = TimeSpan.FromMicroseconds(ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: 0));
                     break;
                 case "--takeover":
                     options.Takeover = true;

@@ -81,6 +81,7 @@ internal static class Program
             ExpectedType = options.Type,
             Verify = options.Verify,
             IdleTimeout = options.IdleTimeout,
+            PerMessageDelay = options.Delay,
             Takeover = options.Takeover,
         });
 

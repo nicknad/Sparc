@@ -106,20 +106,21 @@ Example output:
 ready: role=consumer name=demo capacity=1024 slotSize=256 maxPayload=248
 consumed=1000000 bytes=64000000 elapsed=0.61s throughput=1639344 msg/s dataThroughput=100.0 MiB/s
 producer=Stopped consumer=Running
-latency(us): min=1.20 mean=122.44 p50=51.20 p95=204.80 p99=409.60 max=20480.00 (n=1000000)
+latency(us): min=1.20 mean=122.44 p50=51.20 p90=102.40 p95=204.80 p99=409.60 p99.9=2048.00 max=20480.00 (n=1000000)
 ```
 
 ### CLI
 
 `producer --name <name> [--count n] [--size bytes] [--capacity slots] [--slot-size bytes]`
-`[--type int] [--open-timeout ms] [--full-timeout ms] [--takeover] [--recreate-stale] [--require-existing] [--quiet]`
+`[--type int] [--open-timeout ms] [--full-timeout ms] [--delay-us us] [--takeover] [--recreate-stale] [--require-existing] [--quiet]`
 
 `consumer --name <name> [--count n] [--capacity slots] [--slot-size bytes] [--type int]`
-`[--open-timeout ms] [--idle-timeout ms] [--takeover] [--recreate-stale] [--require-existing] [--no-verify] [--quiet]`
+`[--open-timeout ms] [--idle-timeout ms] [--delay-us us] [--takeover] [--recreate-stale] [--require-existing] [--no-verify] [--quiet]`
 
 `--count 0` on the consumer means "consume until the producer stops".
 `--size` is the payload size; layout is `[sequence:int64][timestamp:int64][fill…]` (min 16 bytes).
-`Ctrl+C` cancels the session gracefully.
+`--delay-us` inserts a pause between messages on that endpoint (slow-producer/backpressure
+simulation for tests and benchmark scenarios; 0 = off). `Ctrl+C` cancels the session gracefully.
 
 ### Exit codes (both apps)
 
@@ -211,7 +212,9 @@ buffer); hosts should invoke them on a background thread (`Task.Run`,
 periodically on the hot path; `SharedRingBuffer.Connect` and `SpscRingBuffer.Write`
 also accept a `CancellationToken` that bounds their spin loops, and the sessions
 report cancellation during role claiming as `SessionStopReason.Cancelled` rather
-than throwing.
+than throwing. `ProducerSessionOptions`/`ConsumerSessionOptions` also accept a
+`PerMessageDelay` (CLI: `--delay-us`) to pace one endpoint and simulate a
+producer/consumer speed mismatch; see the benchmark section for measured effects.
 
 Structured outcomes replace console/exit-code decisions:
 
@@ -458,9 +461,10 @@ dotnet test Sparc.slnx -c Release        # .NET 11 SDK + Microsoft.Testing.Platf
 * **UnitTests.** Empty/one/full/wraparound, arbitrary bytes, zero-length and maximum-sized
   payloads, 200k randomized operations against a `Queue<byte[]>` oracle, header/layout
   validation, region creation/join/version/geometry/corruption, role conflicts and
-  takeover, endpoint states, histogram math, DI registration, cancellation while a
-  blocking write is full, and session semantics (completion, timeouts, peer-stopped
-  drain, verification failure, cancellation). Region protocol tests run against the
+  takeover, endpoint states, histogram math (percentile ordering, p50/p90/p95/p99/p99.9
+  report), DI registration, cancellation while a blocking write is full, and session
+  semantics (completion, timeouts, peer-stopped drain, verification failure, cancellation,
+  per-message pacing). Region protocol tests run against the
   `Sparc.InMemory` factory, so they are OS-independent; Windows factory tests are
   guarded by `OperatingSystem.IsWindows()`.
 * **ConcurrencyTests.** Two dedicated threads move **10,000,000 messages** per transport,
@@ -491,49 +495,109 @@ dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --latency --trans
 
 # the real cross-process measurement (spawns the producer and consumer executables)
 dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --latency --transport shared-xproc --count 500000 --size 64
+
+# cross-process Producer → Consumer sweep: latency percentiles + throughput per size
+dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --latency --transport shared-xproc --sizes 16,64,256,1024,4096,16384 --count 500000 --repeats 3
+
+# speed-mismatch scenarios: a consumer paced to 10k msg/s, then a producer paced to 20k
+dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --latency --transport shared-xproc --sizes 64 --count 50000 --repeats 3 --consumer-delay-us 100
+dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --latency --transport shared-xproc --sizes 64 --count 50000 --repeats 3 --producer-delay-us 50
 ```
 
-Transports compared: `SpscRingBuffer` (managed array), `SharedRingBuffer`
-(`MemoryMappedFile`), `lock + Queue<byte[]>`, bounded `Channel<byte[]>`,
-`NamedPipeServerStream/ClientStream`, `TcpListener/TcpClient` loopback. Each transport
-runs two dedicated threads pumping `Batch = 65,536` messages per measured invocation.
+Transports in the BDN matrix (all in one process): **in-process SPSC ring buffer**
+(`SpscRingBuffer`, managed array), **in-process SPSC shared memory** (`SharedRingBuffer`,
+two views of one memory-mapped region in the same process), **concurrent queue + lock**,
+`Channel<T>`, **named pipe**, **TCP loopback**. Each transport runs two dedicated threads
+pumping `Batch = 65,536` messages per measured invocation. The cross-process numbers come
+from a different setup: separate producer/consumer executables over a real OS-backed region.
 
-Example run on this machine (Windows 11 VM, i7-1260P, BDN 0.16 preview, .NET 11 RC1,
-`IterationCount=3 WarmupCount=1`, captured after the SPARC rename and the
-safety-hardening commits; the VM was shared with light background load during the run,
-so **confidence intervals are wide — treat as directional**):
+Example run on this machine (Windows 11 VM 22621.4317, i7-1260P 2.50 GHz, 12 physical /
+16 logical cores, 15.69 GB RAM, BDN 0.16 preview, .NET 11 RC1,
+`IterationCount=3 WarmupCount=1`, captured after the SPARC rename and the safety-hardening
+commits; the VM was shared with light background load, so **confidence intervals are wide —
+treat as directional**):
 
 | Transport | 16 B | 64 B | 256 B | 1 KB | 4 KB | Alloc/op @64 B |
 |---|---:|---:|---:|---:|---:|---:|
-| SPSC array | 970 ns | 734 ns | 1,069 ns | 658 ns | 893 ns | 0 |
-| SPSC shared memory | **686 ns** | **520 ns** | **457 ns** | **241 ns** | **578 ns** | 0 |
-| lock + Queue | 3,161 ns | 2,578 ns | 4,145 ns | 3,007 ns | 11,582 ns | 88 B |
+| In-process SPSC ring buffer | 970 ns | 734 ns | 1,069 ns | 658 ns | 893 ns | 0 |
+| In-process SPSC shared memory | **686 ns** | **520 ns** | **457 ns** | **241 ns** | **578 ns** | 0 |
+| Concurrent queue + lock | 3,161 ns | 2,578 ns | 4,145 ns | 3,007 ns | 11,582 ns | 88 B |
 | `Channel<T>` | 2,425 ns | 1,626 ns | 2,030 ns | 2,214 ns | 2,615 ns | 88 B |
 | Named pipe | 40.9 µs | 30.8 µs | 30.7 µs | 37.7 µs | 35.5 µs | 0 |
 | TCP loopback | 53.9 µs | 44.7 µs | 74.8 µs | 48.3 µs | 45.4 µs | 0 |
 
-Cross-process latency (producer + consumer executables, 500k × 64 B; repeated runs put
-the consumer between 1.21M and 1.42M msg/s, i.e. 74–87 MiB/s):
+**Keep the comparison fair.** For this fixed-size SPSC workload, the in-process shared
+memory ring reached ~3.1× the throughput of the tested `Channel<T>` configuration and ~5×
+the lock+queue configuration at 64 B (means from the run above). `Channel<T>` and
+`ConcurrentQueue` provide very different semantics — async waiting, backpressure,
+cancellation, scheduling integration, MPMC configurations — so this is not a general
+"SPSC shared memory is N× faster than X" claim; it is one specialized workload measured
+with the same two dedicated threads, the same 65,536-message batch, equivalent
+length-prefixed framing and no per-message flush (TCP runs with `NoDelay`). The
+queue/channel baselines allocate a `byte[]` per message because their APIs carry reference
+types; that allocation is part of their design and shows up in the `Alloc/op` column.
 
-```
-produced=500000 payloadSize=64 elapsed=0.696s throughput=717972 msg/s dataThroughput=43.8 MiB/s
-consumed=500000 bytes=32000000 elapsed=0.384s throughput=1302827 msg/s dataThroughput=79.5 MiB/s
-latency(us): min=0.20 mean=1039.54 p50=102.40 p95=204.80 p99=13107.20 max=313176.50 (n=500000)
-```
+### Producer → Consumer (cross-process) latency and throughput
+
+500,000 messages per size, three runs each; medians, throughput spread is min–max across
+runs. `Message` is the payload size (slot size follows it), latencies in microseconds:
+
+| Message | Throughput | Spread | Data | p50 | p90 | p95 | p99 | p99.9 | max | Alloc/msg |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 16 B | 2.86M msg/s | 1.55M–3.05M | 43.6 MiB/s | 192.00 | 230.40 | 345.60 | 563.20 | 314572.80 | 327598.90 | 0 |
+| 64 B | 1.54M msg/s | 1.49M–1.58M | 93.9 MiB/s | 108.80 | 332.80 | 537.60 | 15564.80 | 340787.20 | 347766.60 | 0 |
+| 256 B | 1.60M msg/s | 1.46M–2.12M | 391.2 MiB/s | 160.00 | 460.80 | 588.80 | 15564.80 | 340787.20 | 343279.80 | 0 |
+| 1 KB | 1.83M msg/s | 1.57M–2.07M | 1,782.3 MiB/s | 179.20 | 217.60 | 486.40 | 14745.60 | 367001.60 | 369654.90 | 0 |
+| 4 KB | 1.56M msg/s | 1.25M–1.73M | 6,090.2 MiB/s | 268.80 | 396.80 | 614.40 | 15564.80 | 353894.40 | 356295.50 | 0 |
+| 16 KB | 139,980 msg/s | 111,194–193,989 | 2,187.2 MiB/s | 2252.80 | 15564.80 | 15564.80 | 16384.00 | 353894.40 | 362477.10 | 0 |
+
+* Throughput is the **consumer's** rate end to end. The producer process starts first and
+  its own elapsed time includes waiting for the consumer to attach, so its reported rate
+  (~0.7–1.0M msg/s at small sizes) understates the send rate; the consumer number is the
+  meaningful one. Each endpoint burns 1–40 % of one core depending on size.
+* `Alloc/msg` is 0 B after setup: BDN's `MemoryDiagnoser` shows 0 B/op for both SPSC
+  transports, and the concurrency test asserts 10M writes+reads allocate < 4 KiB in total.
+* p99.9/max (~0.3 s) are host VM scheduling stalls that recur in every capture on this
+  machine, not ring behavior. p99 ≈ 15.6 ms is the Windows timer tick that `SpinWait`
+  falls back to when the consumer catches up and the buffer goes empty.
+* Latencies come from a 16-sub-bucket log histogram, so percentiles are approximate by at
+  most 1/16 of the value.
+
+### Producer vs consumer speed mismatch (64 B)
+
+Same harness with one endpoint paced (`--delay-us`); rates in msg/s, latencies in µs:
+
+| Scenario | Producer | Consumer | p50 | p99 | CPU prod/cons |
+|---|---:|---:|---:|---:|---:|
+| Producer ≈ consumer (both paced to 10k) | 9,541 | 10,001 | 91750.40 | 327680.00 | 1 % / 34 % |
+| Producer >> consumer (`--consumer-delay-us 100`) | 9,508 | 10,001 | 91750.40 | 393216.00 | 0 % / 29 % |
+| Producer << consumer (`--producer-delay-us 50`) | 20,000 | 23,167 | 5120.00 | 314572.80 | 5 % / 1 % |
+
+* **Producer >> consumer**: the buffer stays full; each message queues behind up to
+  `capacity` messages, so p50 ≈ capacity × consumer period = 1024 × 100 µs ≈ 102 ms and
+  throughput equals the consumer's rate. The consumer burns ~30 % of a core; the blocked
+  producer burns none.
+* **Producer << consumer**: the buffer stays empty and latency is the consumer's
+  *idle-detection* latency — 5.1 ms p50 — because `SpinWait` yields and then sleeps rather
+  than busy-spinning. An OS notification (or an unbounded spin) would cut this to
+  microseconds at the cost of a pinned core. This is the number that matters most for
+  telemetry consumers.
+* **Producer ≈ consumer**: throughput tracks the slower side, and latency sits at the queue
+  operating point (the startup backlog fills the 1024-slot buffer before both ends settle).
 
 Caveats worth knowing before quoting any of this:
 
 * The host is a VM whose cross-core coherence transfer measured **~1.5 µs per handoff**
   (a two-thread ping-pong test managed only ~640k round trips/s). On bare metal the SPSC
   numbers are typically 10–50× higher.
-* Latency measured while the pipeline is saturated includes queueing behind up to
-  `capacity` messages; run with a smaller `--count`/buffer or a throttled producer for
-  unloaded latency.
 * `MemoryDiagnoser` attributes process-wide allocations, so the per-message `byte[]`
   allocations of the queue/channel baselines do show up (the SPSC transports allocate
   nothing after setup).
 * BenchmarkDotNet 0.15.8 cannot identify the .NET 11 RC runtime; the project uses
   `BenchmarkDotNet 0.16.0-preview.2`.
+* Crash/restart and zero-consumer behavior are covered by tests rather than benchmark
+  numbers: `Sparc.ProcessTests` uses killed producer/consumer processes, `--require-existing`
+  timeouts, role conflicts and geometry mismatches.
 
 ---
 

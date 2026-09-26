@@ -1,40 +1,95 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using Sparc.Benchmarks.Pumps;
 
 namespace Sparc.Benchmarks;
 
 /// <summary>
-/// Small custom harness for one-way latency percentiles (p50/p95/p99). For the
-/// real cross-process measurement use <c>--transport shared-xproc</c>, which
-/// runs the Producer and Consumer executables against the same region.
+/// Small custom harness for one-way latency percentiles (p50/p90/p95/p99/p99.9).
+/// For the real cross-process measurement use <c>--transport shared-xproc</c>,
+/// which runs the Producer and Consumer executables against the same region.
+/// <c>--sizes 16,64,256,1024,4096,16384</c> sweeps message sizes and prints a
+/// latency/throughput table (medians over <c>--repeats</c> runs), and
+/// <c>--producer-delay-us</c>/<c>--consumer-delay-us</c> simulate a slow
+/// endpoint so producer-vs-consumer speed mismatches can be measured.
 /// </summary>
 internal static class LatencyRunner
 {
+    private static readonly Regex ProducerPattern = new(
+        @"produced=(?<count>\d+) .* throughput=(?<throughput>\d+) msg/s dataThroughput=(?<mib>[\d.]+) MiB/s",
+        RegexOptions.Compiled);
+
+    private static readonly Regex ConsumerPattern = new(
+        @"consumed=(?<count>\d+) bytes=(?<bytes>\d+) .* throughput=(?<throughput>\d+) msg/s dataThroughput=(?<mib>[\d.]+) MiB/s",
+        RegexOptions.Compiled);
+
+    private static readonly Regex LatencyPattern = new(
+        @"min=(?<min>[\d.]+) mean=(?<mean>[\d.]+) p50=(?<p50>[\d.]+) p90=(?<p90>[\d.]+) " +
+        @"p95=(?<p95>[\d.]+) p99=(?<p99>[\d.]+) p99\.9=(?<p99_9>[\d.]+) max=(?<max>[\d.]+) " +
+        @"\(n=(?<n>\d+)\)",
+        RegexOptions.Compiled);
+
     public static void Run(string[] args)
     {
         string transport = "array";
         int size = 64;
         long count = 200_000;
+        int[]? sizes = null;
+        int repeats = 1;
+        int producerDelayUs = 0;
+        int consumerDelayUs = 0;
 
         for (int i = 0; i < args.Length; i++)
         {
             switch (args[i])
             {
+                case "--latency":
+                    break; // Mode selector consumed by Program.Main.
                 case "--transport":
                     transport = args[++i];
                     break;
                 case "--size":
-                    size = int.Parse(args[++i]);
+                    size = int.Parse(args[++i], CultureInfo.InvariantCulture);
                     break;
                 case "--count":
-                    count = long.Parse(args[++i]);
+                    count = long.Parse(args[++i], CultureInfo.InvariantCulture);
                     break;
+                case "--sizes":
+                    sizes = args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(part => int.Parse(part, CultureInfo.InvariantCulture))
+                        .ToArray();
+                    break;
+                case "--repeats":
+                    repeats = int.Parse(args[++i], CultureInfo.InvariantCulture);
+                    break;
+                case "--producer-delay-us":
+                    producerDelayUs = int.Parse(args[++i], CultureInfo.InvariantCulture);
+                    break;
+                case "--consumer-delay-us":
+                    consumerDelayUs = int.Parse(args[++i], CultureInfo.InvariantCulture);
+                    break;
+                default:
+                    throw new ArgumentException($"Unknown argument '{args[i]}'.");
             }
+        }
+
+        if (sizes is not null)
+        {
+            if (transport is not "shared-xproc")
+            {
+                throw new ArgumentException("--sizes is only supported for --transport shared-xproc.");
+            }
+
+            ArgumentOutOfRangeException.ThrowIfLessThan(repeats, 1);
+            RunCrossProcessSweep(sizes, count, repeats, producerDelayUs, consumerDelayUs);
+            return;
         }
 
         if (transport is "shared-xproc")
         {
-            RunCrossProcess(size, count);
+            RunCrossProcess(size, count, producerDelayUs, consumerDelayUs, echo: true);
             return;
         }
 
@@ -73,7 +128,75 @@ internal static class LatencyRunner
         Console.WriteLine();
     }
 
-    private static void RunCrossProcess(int size, long count)
+    private static void RunCrossProcessSweep(int[] sizes, long count, int repeats, int producerDelayUs, int consumerDelayUs)
+    {
+        Console.WriteLine(
+            $"transport=shared-xproc sweep sizes=[{string.Join(", ", sizes.Select(FormatSize))}] " +
+            $"count={count} repeats={repeats}" +
+            (producerDelayUs > 0 ? $" producer-delay={producerDelayUs}us" : string.Empty) +
+            (consumerDelayUs > 0 ? $" consumer-delay={consumerDelayUs}us" : string.Empty));
+        Console.WriteLine();
+
+        List<CrossProcessRun> runs = [];
+        List<string> rows = [];
+        foreach (int size in sizes)
+        {
+            runs.Clear();
+
+            for (int repeat = 1; repeat <= repeats; repeat++)
+            {
+                CrossProcessRun run = RunCrossProcess(size, count, producerDelayUs, consumerDelayUs, echo: false)
+                    ?? throw new InvalidOperationException($"Run for size {size} did not complete.");
+                runs.Add(run);
+
+                Console.WriteLine(
+                    $"  size={FormatSize(size),-6} run={repeat}/{repeats} " +
+                    $"producer={run.ProducerMsgPerSec,-12:N0} consumer={run.ConsumerMsgPerSec,-12:N0} msg/s " +
+                    $"p50={run.Latency.P50:F2}us p99={run.Latency.P99:F2}us");
+            }
+
+            rows.Add(FormatSweepRow(size, runs));
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("| Message | Throughput  | Spread          | Data       | p50      | p90      | p95      | p99      | p99.9    | max        | CPU prod/cons |");
+        Console.WriteLine("|---------|-------------|-----------------|------------|----------|----------|----------|----------|----------|------------|---------------|");
+        foreach (string row in rows)
+        {
+            Console.WriteLine(row);
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("Throughput is the consumer's; latencies are the median of each run's percentile; CPU is of one core.");
+    }
+
+    private static string FormatSweepRow(int size, List<CrossProcessRun> runs)
+    {
+        double throughput = Median(runs.Select(r => r.ConsumerMsgPerSec));
+        double throughputMin = runs.Min(r => r.ConsumerMsgPerSec);
+        double throughputMax = runs.Max(r => r.ConsumerMsgPerSec);
+        double data = Median(runs.Select(r => r.ConsumerMibPerSec));
+        double producerCpu = Median(runs.Select(r => r.ProducerCpuPercent));
+        double consumerCpu = Median(runs.Select(r => r.ConsumerCpuPercent));
+
+        StringBuilder sb = new(240);
+        sb.Append("| ").Append(FormatSize(size).PadRight(7));
+        sb.Append("| ").Append(FormatCount(throughput).PadRight(10)).Append("msg/s ");
+        sb.Append("| ").Append($"{FormatCount(throughputMin)}-{FormatCount(throughputMax)}".PadRight(15));
+        sb.Append("| ").Append(data.ToString("F1", CultureInfo.InvariantCulture).PadLeft(8)).Append(" MiB/s ");
+        sb.Append("| ").Append(Median(runs.Select(r => r.Latency.P50)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(8));
+        sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.P90)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(8));
+        sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.P95)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(8));
+        sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.P99)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(8));
+        sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.P999)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(8));
+        sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.Max)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(10));
+        sb.Append(" | ").Append($"{producerCpu:F0}/{consumerCpu:F0} %");
+        sb.Append(" |");
+        return sb.ToString();
+    }
+
+    private static CrossProcessRun? RunCrossProcess(
+        int size, long count, int producerDelayUs, int consumerDelayUs, bool echo)
     {
         string name = "spsc-latency-" + Guid.NewGuid().ToString("N");
         string repoRoot = FindRepoRoot();
@@ -88,9 +211,16 @@ internal static class LatencyRunner
         string consumerDll = Path.Combine(repoRoot, "src", "Sparc.Consumer", "bin", configuration, "net11.0", "Sparc.Consumer.dll");
 
         // The producer goes first: it defines the geometry (the consumer adopts it).
-        using Process producer = StartProcess(producerDll, repoRoot, "--name", name, "--count", count.ToString(), "--size", size.ToString());
+        using Process producer = StartProcess(
+            producerDll, repoRoot,
+            "--name", name, "--count", count.ToString(CultureInfo.InvariantCulture),
+            "--size", size.ToString(CultureInfo.InvariantCulture),
+            "--delay-us", producerDelayUs.ToString(CultureInfo.InvariantCulture));
         Thread.Sleep(300);
-        using Process consumer = StartProcess(consumerDll, repoRoot, "--name", name, "--count", count.ToString());
+        using Process consumer = StartProcess(
+            consumerDll, repoRoot,
+            "--name", name, "--count", count.ToString(CultureInfo.InvariantCulture),
+            "--delay-us", consumerDelayUs.ToString(CultureInfo.InvariantCulture));
 
         Task<string> producerOut = producer.StandardOutput.ReadToEndAsync();
         Task<string> producerErr = producer.StandardError.ReadToEndAsync();
@@ -115,13 +245,17 @@ internal static class LatencyRunner
 
         Task.WaitAll(producerOut, producerErr, consumerOut, consumerErr);
 
-        Console.WriteLine($"transport=shared-xproc size={size} count={count} (two processes, one region)");
-        Console.WriteLine(producerOut.Result.Trim());
-        Console.WriteLine(consumerOut.Result.Trim());
+        if (echo)
+        {
+            Console.WriteLine($"transport=shared-xproc size={size} count={count} (two processes, one region)");
+            Console.WriteLine(producerOut.Result.Trim());
+            Console.WriteLine(consumerOut.Result.Trim());
+        }
 
         if (!bothExited)
         {
             Console.Error.WriteLine("timed out waiting for producer/consumer");
+            return null;
         }
 
         if (!string.IsNullOrWhiteSpace(producerErr.Result))
@@ -133,7 +267,87 @@ internal static class LatencyRunner
         {
             Console.Error.WriteLine(consumerErr.Result.Trim());
         }
+
+        return new CrossProcessRun(
+            ParseProducerOutput(producerOut.Result),
+            ParseConsumerOutput(consumerOut.Result),
+            CpuPercent(producer),
+            CpuPercent(consumer));
     }
+
+    private static ProducerSample ParseProducerOutput(string output)
+    {
+        Match match = ProducerPattern.Match(output);
+        if (!match.Success)
+        {
+            throw new InvalidOperationException($"Could not parse producer output:{Environment.NewLine}{output}");
+        }
+
+        return new ProducerSample(
+            long.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture),
+            double.Parse(match.Groups["throughput"].Value, CultureInfo.InvariantCulture),
+            double.Parse(match.Groups["mib"].Value, CultureInfo.InvariantCulture));
+    }
+
+    private static ConsumerSample ParseConsumerOutput(string output)
+    {
+        Match match = ConsumerPattern.Match(output);
+        Match latency = LatencyPattern.Match(output);
+        if (!match.Success || !latency.Success)
+        {
+            throw new InvalidOperationException($"Could not parse consumer output:{Environment.NewLine}{output}");
+        }
+
+        return new ConsumerSample(
+            long.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture),
+            double.Parse(match.Groups["throughput"].Value, CultureInfo.InvariantCulture),
+            double.Parse(match.Groups["mib"].Value, CultureInfo.InvariantCulture),
+            new LatencyStats(
+                long.Parse(latency.Groups["n"].Value, CultureInfo.InvariantCulture),
+                ParseDouble(latency, "min"),
+                ParseDouble(latency, "mean"),
+                ParseDouble(latency, "p50"),
+                ParseDouble(latency, "p90"),
+                ParseDouble(latency, "p95"),
+                ParseDouble(latency, "p99"),
+                ParseDouble(latency, "p99_9"),
+                ParseDouble(latency, "max")));
+    }
+
+    private static double ParseDouble(Match match, string group) =>
+        double.Parse(match.Groups[group].Value, CultureInfo.InvariantCulture);
+
+    private static double CpuPercent(Process process)
+    {
+        try
+        {
+            TimeSpan wall = process.ExitTime - process.StartTime;
+            return wall.TotalSeconds > 0 ? process.TotalProcessorTime.TotalSeconds / wall.TotalSeconds * 100 : 0;
+        }
+        catch (InvalidOperationException)
+        {
+            return 0;
+        }
+    }
+
+    private static double Median(IEnumerable<double> values)
+    {
+        double[] sorted = values.OrderBy(v => v).ToArray();
+        if (sorted.Length == 0)
+        {
+            return 0;
+        }
+
+        int middle = sorted.Length / 2;
+        return sorted.Length % 2 == 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    }
+
+    private static string FormatSize(int size) => size >= 1024 ? $"{size / 1024} KB" : $"{size} B";
+
+    private static string FormatCount(double value) =>
+        value >= 1_000_000
+            ? (value / 1_000_000).ToString("F2", CultureInfo.InvariantCulture) + "M"
+            : value.ToString("N0", CultureInfo.InvariantCulture);
 
     private static Process StartProcess(string dll, string workingDirectory, params string[] args)
     {
@@ -170,5 +384,24 @@ internal static class LatencyRunner
         }
 
         throw new InvalidOperationException("Could not locate the repository root.");
+    }
+
+    private readonly record struct ProducerSample(long Count, double MsgPerSec, double MibPerSec);
+
+    private readonly record struct ConsumerSample(long Count, double MsgPerSec, double MibPerSec, LatencyStats Latency);
+
+    private readonly record struct LatencyStats(
+        long Count, double Min, double Mean, double P50, double P90, double P95, double P99, double P999, double Max);
+
+    private sealed record CrossProcessRun(
+        ProducerSample Producer, ConsumerSample Consumer, double ProducerCpuPercent, double ConsumerCpuPercent)
+    {
+        public double ProducerMsgPerSec => Producer.MsgPerSec;
+
+        public double ConsumerMsgPerSec => Consumer.MsgPerSec;
+
+        public double ConsumerMibPerSec => Consumer.MibPerSec;
+
+        public LatencyStats Latency => Consumer.Latency;
     }
 }

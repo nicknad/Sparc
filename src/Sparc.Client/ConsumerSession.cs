@@ -29,6 +29,7 @@ public sealed class ConsumerSession
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentOutOfRangeException.ThrowIfLessThan(options.PerMessageDelay, TimeSpan.Zero);
 
         _buffer = buffer;
         _options = options;
@@ -56,6 +57,7 @@ public sealed class ConsumerSession
         long idleSince = 0;
         long cancellationCounter = 0;
         long idleTimeoutTicks = (long)(_options.IdleTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
+        long pacingTicks = MessagePacer.TicksFor(_timeProvider, _options.PerMessageDelay);
         long progressInterval = _options.Count > 0 ? Math.Max(1, _options.Count / ProgressReports) : 0;
         long runStartTimestamp = _timeProvider.GetTimestamp();
         SessionStopReason reason = SessionStopReason.Completed;
@@ -67,6 +69,7 @@ public sealed class ConsumerSession
             {
                 spin.Reset();
                 idleSince = 0;
+                MessagePacer.Wait(_timeProvider, runStartTimestamp, state.Received, pacingTicks);
 
                 if (progress is not null && progressInterval > 0 && state.Received % progressInterval == 0)
                 {
