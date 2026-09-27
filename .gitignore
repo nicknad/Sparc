@@ -3,7 +3,10 @@ obj/
 *.user
 .vs/
 .idea/
+.vscode/
+
 TestResults/
 BenchmarkDotNet.Artifacts/
 .bdn/
 artifacts/
+/WORKLIST.md
