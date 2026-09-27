@@ -18,13 +18,14 @@ treat everything as directional.
 
 ## 1. BenchmarkDotNet matrix
 
-Eight transports, five message sizes (16 B, 64 B, 256 B, 1 KB, 4 KB), each
+Nine transports, five message sizes (16 B, 64 B, 256 B, 1 KB, 4 KB), each
 measured with two dedicated threads pumping 65,536 messages per invocation:
 
 * in-process SPSC ring buffer (`SpscArrayBenchmarks`)
 * in-process SPSC shared memory (`SpscSharedMemoryBenchmarks`)
 * lease-API variants of both (`SpscArrayLeaseBenchmarks`,
   `SpscSharedMemoryLeaseBenchmarks`)
+* typed channel layer over the ring (`SpscChannelBenchmarks`)
 * `ConcurrentQueue<T>` + lock, `Channel<T>`, named pipe, TCP loopback
 
 ```powershell
@@ -160,8 +161,8 @@ dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --regression --to
 
 What it does:
 
-* Eight scenarios: copy and lease APIs for the array and shared-memory buffers
-  at 64 B, 4 KB and 16 KB.
+* Nine scenarios: copy and lease APIs for the array and shared-memory buffers
+  at 64 B, 4 KB and 16 KB, plus the typed channel layer at 8 B.
 * Message counts are chosen so each measured run lasts at least a few hundred
   milliseconds (2M/500k/150k messages).
 * All pumps live for the whole run and rounds interleave scenarios, so host

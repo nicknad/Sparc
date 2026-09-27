@@ -550,10 +550,23 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
     /// arrives, the caller cancels, or the buffer stays empty for
     /// <see cref="ReadTimeoutSeconds"/> seconds.
     /// </summary>
-    public ReadLease Read(CancellationToken cancellationToken = default)
+    public ReadLease Read() => Read(TimeSpan.FromSeconds(ReadTimeoutSeconds), CancellationToken.None);
+
+    /// <summary>Blocking wrapper with a cancellation token, 30-second empty-buffer timeout.</summary>
+    public ReadLease Read(CancellationToken cancellationToken) =>
+        Read(TimeSpan.FromSeconds(ReadTimeoutSeconds), cancellationToken);
+
+    /// <summary>
+    /// Blocking variant of <see cref="TryBeginRead"/> with an explicit
+    /// empty-buffer timeout.
+    /// </summary>
+    public ReadLease Read(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(timeout, TimeSpan.Zero);
+
         long startTimestamp = Stopwatch.GetTimestamp();
-        long timeoutTicks = ReadTimeoutSeconds * Stopwatch.Frequency;
+        double timeoutSeconds = timeout.TotalSeconds;
+        long timeoutTicks = (long)(timeoutSeconds * Stopwatch.Frequency);
         SpinWait spin = new();
         ReadOnlySpan<byte> payload;
         int length;
@@ -564,7 +577,7 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
             if (Stopwatch.GetTimestamp() - startTimestamp >= timeoutTicks)
             {
                 throw new RingBufferTimeoutException(
-                    $"Buffer stayed empty for {ReadTimeoutSeconds} seconds; the peer is not producing.");
+                    $"Buffer stayed empty for {timeoutSeconds:F1} seconds; the peer is not producing.");
             }
 
             spin.SpinOnce();

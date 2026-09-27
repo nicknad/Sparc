@@ -27,7 +27,7 @@ first quality gate.
 ## Benchmarks
 
 ```powershell
-# BenchmarkDotNet matrix (8 transports x 5 sizes)
+# BenchmarkDotNet matrix (9 transports x 5 sizes)
 dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --filter *
 
 # cross-process latency/throughput sweep

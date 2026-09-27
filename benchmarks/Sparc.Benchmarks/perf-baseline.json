@@ -12,6 +12,11 @@
       "nanosecondsPerMessage": 328.4389,
       "mebibytesPerSecond": 185.83412698678507
     },
+    "channel-8": {
+      "messagesPerSecond": 20738971,
+      "nanosecondsPerMessage": 48.22,
+      "mebibytesPerSecond": 158.2
+    },
     "shared-copy-64": {
       "messagesPerSecond": 12995417.815678192,
       "nanosecondsPerMessage": 76.9502,

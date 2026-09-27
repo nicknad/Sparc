@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net11.0</TargetFrameworks>
+    <RootNamespace>Sparc.Channels</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Description>Typed async channel over the SPARC ring: Channel&lt;T&gt;-style Writer/Reader with codec-based serialization, TryWrite fast path, ReadAllAsync and end-of-stream completion when the producer stops.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sparc.Abstractions\Sparc.Abstractions.csproj" />
+    <ProjectReference Include="..\Sparc.Core\Sparc.Core.csproj" />
+  </ItemGroup>
+
+</Project>

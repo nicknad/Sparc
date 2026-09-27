@@ -50,6 +50,7 @@ in mind, and open an issue for anything that does not hold up.
 `docs/` goes deeper than this file:
 
 * [docs/hosting.md](docs/hosting.md) — DI, hosted session/worker services, health checks, metrics, configuration.
+* [docs/channels.md](docs/channels.md) — the typed `SparcChannel<T>` layer: codecs, async API, semantics, overhead.
 * [docs/concept.md](docs/concept.md) — the problem, the core idea, guarantees, and how it compares to pipes/sockets/queues.
 * [docs/use-cases.md](docs/use-cases.md) — when to use it, sample patterns, anti-patterns, sizing.
 * [docs/how-it-works.md](docs/how-it-works.md) — handshake, layout, algorithm, memory ordering, lease API, sessions, wait modes, crash semantics, platforms, tests.
@@ -72,6 +73,7 @@ in mind, and open an issue for anything that does not hold up.
 │   ├── Sparc.WindowsMemoryMapped/    Windows named memory-mapped implementation + DI registration
 │   ├── Sparc.Core/            ring protocol: layout/framing, role-typed endpoints, SpscRingBuffer
 │   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
+│   ├── Sparc.Channels/        typed SparcChannel<T> writer/reader with codecs
 │   ├── Sparc.Hosting/         AddSparcIpc/AddSparcChannel, hosted services, health check, metrics
 │   ├── Sparc.Producer/        producer CLI (args → session → summary → exit code)
 │   └── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
@@ -183,6 +185,7 @@ Reference the projects (or packages once published) you need:
 | `Sparc.WindowsMemoryMapped` | you run on Windows and want named memory-mapped regions (+ DI) |
 | `Sparc.Core` | you need the role-typed endpoints (`SparcRing`, `IProducerEndpoint`, `IConsumerEndpoint`) or the in-process `SpscRingBuffer` |
 | `Sparc.Client` | you need producer/consumer sessions and verification |
+| `Sparc.Channels` | you want a typed `Channel<T>`-style async API with codecs |
 | `Sparc.Hosting` | you want DI, hosted endpoints, health checks and metrics in one registration |
 
 ### Web app / worker service / generic host
@@ -259,6 +262,34 @@ sealed class OrderProducerWorker(
     }, stoppingToken);
 }
 ```
+
+### Typed channel (`Sparc.Channels`)
+
+When a `Channel<T>`-style API fits better than a session, the typed layer
+encodes your message and publishes the bytes through the ring:
+
+```csharp
+using Sparc.Channels;
+
+// consumer process
+using SparcChannelReader<Order> reader = SparcChannelReader<Order>.Open(
+    factory, "orders", new JsonCodec<Order>(maxSize: 2048));
+await foreach (Order order in reader.ReadAllAsync(stoppingToken))
+{
+    Process(order);
+}
+
+// producer process
+using SparcChannelWriter<Order> writer = SparcChannelWriter<Order>.Open(
+    factory, "orders", new JsonCodec<Order>(maxSize: 2048));
+await writer.WriteAsync(order, stoppingToken);   // waits while the ring is full
+```
+
+`TryWrite` is the non-blocking fast path, `ReadAllAsync` ends when the producer
+disposes its writer, and both ends expose the underlying endpoint for
+zero-copy leases. Codecs are span-based, so hand-written codecs allocate
+nothing; `JsonCodec<T>` is the convenience option. See
+[docs/channels.md](docs/channels.md).
 
 ### Runnable sample (`samples/Sparc.WebApp`)
 
@@ -587,7 +618,7 @@ check exit codes and message counts, not wall-clock timing.
 ## 6. Benchmarks
 
 ```powershell
-# throughput matrix (BenchmarkDotNet; 8 transports × 5 message sizes)
+# throughput matrix (BenchmarkDotNet; 9 transports × 5 message sizes)
 dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --filter *
 
 # in-process regression check against benchmarks/Sparc.Benchmarks/perf-baseline.json

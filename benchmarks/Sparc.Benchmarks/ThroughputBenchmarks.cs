@@ -54,6 +54,13 @@ public class SpscSharedMemoryLeaseBenchmarks : ThroughputBenchmarkBase
 
 [MemoryDiagnoser]
 [SimpleJob(warmupCount: 1, iterationCount: 3)]
+public class SpscChannelBenchmarks : ThroughputBenchmarkBase
+{
+    protected override TwoThreadPump CreatePump() => new SpscChannelPump(MessageSize);
+}
+
+[MemoryDiagnoser]
+[SimpleJob(warmupCount: 1, iterationCount: 3)]
 public class LockQueueBenchmarks : ThroughputBenchmarkBase
 {
     protected override TwoThreadPump CreatePump() => new LockQueuePump();

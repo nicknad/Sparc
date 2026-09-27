@@ -30,7 +30,9 @@ override Sparc.Core.RingBufferVersionMismatchException.Code.get -> Sparc.SparcEr
 Sparc.Core.IConsumerEndpoint
 Sparc.Core.IConsumerEndpoint.AdvanceRead() -> void
 Sparc.Core.IConsumerEndpoint.Connect(bool takeover = false, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> void
-Sparc.Core.IConsumerEndpoint.Read(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Sparc.Core.ReadLease
+Sparc.Core.IConsumerEndpoint.Read() -> Sparc.Core.ReadLease
+Sparc.Core.IConsumerEndpoint.Read(System.Threading.CancellationToken cancellationToken) -> Sparc.Core.ReadLease
+Sparc.Core.IConsumerEndpoint.Read(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Sparc.Core.ReadLease
 Sparc.Core.IConsumerEndpoint.TryBeginRead(out Sparc.Core.ReadLease lease) -> bool
 Sparc.Core.IConsumerEndpoint.TryPeek(out System.ReadOnlySpan<byte> payload, out int length, out int type) -> bool
 Sparc.Core.IConsumerEndpoint.TryRead(System.Span<byte> destination) -> bool

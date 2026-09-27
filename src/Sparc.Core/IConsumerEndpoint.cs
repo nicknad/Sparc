@@ -53,5 +53,15 @@ public interface IConsumerEndpoint : IEndpoint
     /// until a message arrives, the caller cancels, or the buffer stays empty
     /// for 30 seconds.
     /// </summary>
-    ReadLease Read(CancellationToken cancellationToken = default);
+    ReadLease Read();
+
+    /// <summary>Blocking wrapper with a cancellation token, 30-second empty-buffer timeout.</summary>
+    ReadLease Read(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Blocking convenience wrapper with an explicit empty-buffer timeout.
+    /// Throws <see cref="RingBufferTimeoutException"/> when the buffer stays
+    /// empty for <paramref name="timeout"/>.
+    /// </summary>
+    ReadLease Read(TimeSpan timeout, CancellationToken cancellationToken = default);
 }

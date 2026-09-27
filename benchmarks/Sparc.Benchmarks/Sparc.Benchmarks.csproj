@@ -17,11 +17,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sparc.Core\Sparc.Core.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Channels\Sparc.Channels.csproj" />
     <ProjectReference Include="..\..\src\Sparc.Client\Sparc.Client.csproj" />
-    <ProjectReference Include="..\..\src\Sparc.UnixMemoryMapped\Sparc.UnixMemoryMapped.csproj" />
-    <ProjectReference Include="..\..\src\Sparc.WindowsMemoryMapped\Sparc.WindowsMemoryMapped.csproj" />
-    <ProjectReference Include="..\..\src\Sparc.Producer\Sparc.Producer.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\src\Sparc.Consumer\Sparc.Consumer.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\Sparc.InMemory\Sparc.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Producer\Sparc.Producer.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Consumer\Sparc.Consumer.csproj" />
   </ItemGroup>
 
 </Project>

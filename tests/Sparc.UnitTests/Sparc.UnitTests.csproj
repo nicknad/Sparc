@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sparc.Core\Sparc.Core.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Channels\Sparc.Channels.csproj" />
     <ProjectReference Include="..\..\src\Sparc.Client\Sparc.Client.csproj" />
     <ProjectReference Include="..\..\src\Sparc.Hosting\Sparc.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Sparc.InMemory\Sparc.InMemory.csproj" />

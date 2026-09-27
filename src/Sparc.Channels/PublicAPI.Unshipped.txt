@@ -1,0 +1,34 @@
+#nullable enable
+const Sparc.Channels.SparcChannelWriter<T>.DefaultMessageType = 1 -> int
+Sparc.Channels.ISparcCodec<T>
+Sparc.Channels.ISparcCodec<T>.Decode(System.ReadOnlySpan<byte> source) -> T
+Sparc.Channels.ISparcCodec<T>.Encode(T item, System.Span<byte> destination) -> int
+Sparc.Channels.ISparcCodec<T>.MaxSize.get -> int
+Sparc.Channels.JsonCodec<T>
+Sparc.Channels.JsonCodec<T>.Decode(System.ReadOnlySpan<byte> source) -> T
+Sparc.Channels.JsonCodec<T>.Encode(T item, System.Span<byte> destination) -> int
+Sparc.Channels.JsonCodec<T>.JsonCodec(int maxSize = 4096, System.Text.Json.JsonSerializerOptions? options = null) -> void
+Sparc.Channels.JsonCodec<T>.MaxSize.get -> int
+Sparc.Channels.SparcChannel<T>
+Sparc.Channels.SparcChannel<T>.Dispose() -> void
+Sparc.Channels.SparcChannel<T>.Name.get -> string!
+Sparc.Channels.SparcChannel<T>.Reader.get -> Sparc.Channels.SparcChannelReader<T>!
+Sparc.Channels.SparcChannel<T>.Writer.get -> Sparc.Channels.SparcChannelWriter<T>!
+Sparc.Channels.SparcChannelReader<T>
+Sparc.Channels.SparcChannelReader<T>.Dispose() -> void
+Sparc.Channels.SparcChannelReader<T>.Endpoint.get -> Sparc.Core.IConsumerEndpoint!
+Sparc.Channels.SparcChannelReader<T>.Name.get -> string!
+Sparc.Channels.SparcChannelReader<T>.ReadAllAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<T>!
+Sparc.Channels.SparcChannelReader<T>.ReadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>
+Sparc.Channels.SparcChannelReader<T>.TryRead(out T item) -> bool
+Sparc.Channels.SparcChannelReader<T>.WaitToReadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Sparc.Channels.SparcChannelWriter<T>
+Sparc.Channels.SparcChannelWriter<T>.Dispose() -> void
+Sparc.Channels.SparcChannelWriter<T>.Endpoint.get -> Sparc.Core.IProducerEndpoint!
+Sparc.Channels.SparcChannelWriter<T>.Name.get -> string!
+Sparc.Channels.SparcChannelWriter<T>.TryWrite(T item) -> bool
+Sparc.Channels.SparcChannelWriter<T>.WaitToWriteAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Sparc.Channels.SparcChannelWriter<T>.WriteAsync(T item, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+static Sparc.Channels.SparcChannel<T>.CreateInProcess(Sparc.IIpcMemoryRegionFactory! factory, string! name, Sparc.Channels.ISparcCodec<T>! codec, int capacity = 1024, int slotSize = 0, Sparc.Core.SharedRingBufferOptions? options = null, System.TimeSpan? idleTimeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Sparc.Channels.SparcChannel<T>!
+static Sparc.Channels.SparcChannelReader<T>.Open(Sparc.IIpcMemoryRegionFactory! factory, string! name, Sparc.Channels.ISparcCodec<T>! codec, int capacity = 1024, int slotSize = 0, Sparc.Core.SharedRingBufferOptions? options = null, System.TimeSpan? idleTimeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Sparc.Channels.SparcChannelReader<T>!
+static Sparc.Channels.SparcChannelWriter<T>.Open(Sparc.IIpcMemoryRegionFactory! factory, string! name, Sparc.Channels.ISparcCodec<T>! codec, int capacity = 1024, int slotSize = 0, Sparc.Core.SharedRingBufferOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Sparc.Channels.SparcChannelWriter<T>!
