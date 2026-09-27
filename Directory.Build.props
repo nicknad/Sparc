@@ -10,7 +10,30 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <Version>0.2.0</Version>
     <Authors>nicknad</Authors>
+    <Copyright>Copyright (c) 2026 nicknad</Copyright>
   </PropertyGroup>
+
+  <!-- NuGet packaging metadata. Packable projects are declared per project;
+       these properties are ignored by tests, samples and tools. -->
+  <PropertyGroup>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>ipc;shared-memory;memory-mapped;lock-free;spsc;ring-buffer;interprocess;low-latency</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <RepositoryUrl>https://github.com/nicknad/Sparc</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/nicknad/Sparc</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="11.0.100-rc.1.26425.128">

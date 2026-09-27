@@ -34,12 +34,25 @@ Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in
 
 ---
 
+## Documentation
+
+`docs/` goes deeper than this file:
+
+* [docs/concept.md](docs/concept.md) — the problem, the core idea, guarantees, and how it compares to pipes/sockets/queues.
+* [docs/use-cases.md](docs/use-cases.md) — when to use it, sample patterns, anti-patterns, sizing.
+* [docs/how-it-works.md](docs/how-it-works.md) — handshake, layout, algorithm, memory ordering, lease API, sessions, wait modes, crash semantics, platforms, tests.
+* [docs/performance-invariants.md](docs/performance-invariants.md) — every invariant behind the measured performance, with mechanism, code location, payoff, and failure mode.
+* [docs/benchmarking.md](docs/benchmarking.md) — harnesses, commands, current numbers, measurement traps, regression checks.
+
+---
+
 ## Repository layout
 
 ```
 .
 ├── Sparc.slnx                library solution: src, tests, benchmarks
 ├── Sparc.Samples.slnx        samples solution: samples/ (intentionally not in Sparc.slnx)
+├── docs/                     concept, use cases, mechanics, performance invariants, benchmarking
 ├── src/
 │   ├── Sparc.Abstractions/           IIpcMemoryRegionFactory / IIpcMemoryRegion, options, exceptions
 │   ├── Sparc.InMemory/               pinned managed-array factory for tests and single-process development

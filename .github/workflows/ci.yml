@@ -7,8 +7,12 @@ on:
 
 jobs:
   build-test:
-    name: Build and test (Windows)
-    runs-on: windows-latest
+    name: Build and test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,8 +24,19 @@ jobs:
       - name: Build (warnings are errors)
         run: dotnet build Sparc.slnx -c Release --no-incremental
 
-      - name: Test
+      - name: Test (full suite)
+        if: runner.os == 'Windows'
         run: dotnet test Sparc.slnx -c Release --no-build
+
+      - name: Test (portable suites)
+        if: runner.os != 'Windows'
+        run: |
+          dotnet test tests/Sparc.UnitTests/Sparc.UnitTests.csproj -c Release --no-build
+          dotnet test tests/Sparc.ConcurrencyTests/Sparc.ConcurrencyTests.csproj -c Release --no-build
 
       - name: Build samples
         run: dotnet build Sparc.Samples.slnx -c Release --no-incremental
+
+      - name: Pack (validates NuGet metadata)
+        if: runner.os == 'Windows'
+        run: dotnet pack Sparc.slnx -c Release --no-build -o artifacts

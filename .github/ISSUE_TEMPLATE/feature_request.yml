@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest a capability or an improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that is currently hard or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like the API or behaviour to look like?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other tools or approaches you tried, and why they do not fit.
+    validations:
+      required: false
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      description: SPARC is deliberately SPSC, fixed-size, same-machine and non-persistent. See docs/concept.md.
+      options:
+        - label: This request does not require MPMC, variable-sized records, cross-machine transport or persistence.
+          required: true
+        - label: I searched existing issues and discussions for this request.
+          required: true
