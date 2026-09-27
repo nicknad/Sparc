@@ -7,7 +7,7 @@ namespace Sparc.Core;
 /// Per-slot framing stored in front of every payload:
 /// <c>[int32 length][int32 type][payload...]</c> (little-endian).
 /// </summary>
-public static class SlotFraming
+internal static class SlotFraming
 {
     private const int TypeOffset = sizeof(int);
 

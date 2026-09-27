@@ -51,7 +51,7 @@ internal static class Program
         IIpcMemoryRegionFactory factory = OperatingSystem.IsWindows()
             ? new WindowsNamedMemoryMappedRegionFactory()
             : new UnixFileMemoryMappedRegionFactory();
-        using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(
+        using IProducerEndpoint buffer = SparcRing.OpenProducer(
             factory,
             options.Name,
             options.Capacity,
@@ -61,6 +61,7 @@ internal static class Program
                 OpenTimeout = options.OpenTimeout,
                 RecreateIfStale = options.RecreateStale,
                 RequireExisting = options.RequireExisting,
+                Takeover = options.Takeover,
             });
 
         if (!options.Quiet)

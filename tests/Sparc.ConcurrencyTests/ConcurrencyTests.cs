@@ -14,7 +14,8 @@ public class SpscArrayConcurrencyTests(ITestOutputHelper output)
     {
         SpscRingBuffer buffer = new(1024, 256);
 
-        TransferRunner.Result result = TransferRunner.Run(buffer, buffer, Total, payloadSize: 64, Timeout);
+        TransferRunner.Result result = TransferRunner.Run(
+            new SpscTransferRing(buffer), new SpscTransferRing(buffer), Total, payloadSize: 64, Timeout);
 
         output.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"array: {result.Consumed:N0} messages in {result.Elapsed.TotalSeconds:F3}s " +
@@ -30,7 +31,8 @@ public class SpscArrayConcurrencyTests(ITestOutputHelper output)
         SpscRingBuffer buffer = new(2, 32);
 
         TransferRunner.Result result = TransferRunner.Run(
-            buffer, buffer, total: 1_000_000, payloadSize: 24, TimeSpan.FromMinutes(2));
+            new SpscTransferRing(buffer), new SpscTransferRing(buffer),
+            total: 1_000_000, payloadSize: 24, TimeSpan.FromMinutes(2));
 
         output.WriteLine($"tiny capacity: {result.Consumed:N0} messages in {result.Elapsed.TotalSeconds:F3}s");
         Assert.Equal(1_000_000, result.Consumed);
@@ -86,7 +88,8 @@ public class SharedRingBufferConcurrencyTests(ITestOutputHelper output)
         consumerView.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
 
         TransferRunner.Result result = TransferRunner.Run(
-            producerView, consumerView, Total, payloadSize: 64, Timeout);
+            new SharedTransferRing(producerView), new SharedTransferRing(consumerView),
+            Total, payloadSize: 64, Timeout);
 
         output.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"shared memory: {result.Consumed:N0} messages in {result.Elapsed.TotalSeconds:F3}s " +

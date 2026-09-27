@@ -80,7 +80,7 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
     public IIpcMemoryRegion CreateOrOpen(string name, long size, IpcRegionOptions? options = null)
     {
         EnsureSupported();
-        ArgumentException.ThrowIfNullOrEmpty(name);
+        RegionName.Validate(name);
         ArgumentOutOfRangeException.ThrowIfLessThan(size, 1);
         options ??= IpcRegionOptions.Default;
 
@@ -107,7 +107,7 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
     public IIpcMemoryRegion OpenExisting(string name, IpcRegionOptions? options = null)
     {
         EnsureSupported();
-        ArgumentException.ThrowIfNullOrEmpty(name);
+        RegionName.Validate(name);
         options ??= IpcRegionOptions.Default;
 
         string path = PathFor(name);

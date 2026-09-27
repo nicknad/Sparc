@@ -41,8 +41,8 @@ public sealed class DemoTransferWorker(
 
     private async Task RunTransferAsync(int count, CancellationToken cancellationToken)
     {
-        SharedRingBuffer producerView = await OpenAsync(cancellationToken).ConfigureAwait(false);
-        SharedRingBuffer consumerView = await OpenAsync(cancellationToken).ConfigureAwait(false);
+        IProducerEndpoint producerView = await OpenProducerAsync(cancellationToken).ConfigureAwait(false);
+        IConsumerEndpoint consumerView = await OpenConsumerAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ProducerSession producer = new(
@@ -84,12 +84,25 @@ public sealed class DemoTransferWorker(
         }
     }
 
-    private Task<SharedRingBuffer> OpenAsync(CancellationToken cancellationToken) => Task.Run(
-        () => SharedRingBuffer.OpenOrCreate(
+    private Task<IProducerEndpoint> OpenProducerAsync(CancellationToken cancellationToken) => Task.Run(
+        () => SparcRing.OpenProducer(
             factory,
             DemoRing.Name,
             DemoRing.Capacity,
             DemoRing.SlotSize,
             new SharedRingBufferOptions { OpenTimeout = TimeSpan.FromSeconds(30) }),
+        cancellationToken);
+
+    private Task<IConsumerEndpoint> OpenConsumerAsync(CancellationToken cancellationToken) => Task.Run(
+        () => SparcRing.OpenConsumer(
+            factory,
+            DemoRing.Name,
+            DemoRing.Capacity,
+            DemoRing.SlotSize,
+            new SharedRingBufferOptions
+            {
+                OpenTimeout = TimeSpan.FromSeconds(30),
+                AdoptExistingGeometry = true,
+            }),
         cancellationToken);
 }

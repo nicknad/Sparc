@@ -53,7 +53,7 @@ Details worth copying:
   keys lower-cased) and never blocks the request: captures go into a bounded
   in-process `Channel<T>`, and a `BackgroundService` drains it.
 * Captures are JSON with variable length, so the ring is used directly via
-  `SharedRingBuffer` (not the sessions, which speak the fixed
+  `SharedRingBuffer`-backed role endpoints (not the sessions, which speak the fixed
   `[sequence][timestamp][fill]` protocol). Each JSON capture is packed into one
   fixed slot; a capture that does not fit is dropped and counted.
 * The consumer process decodes captures, parses `--header` as a number, and
@@ -74,8 +74,8 @@ the full channel; a real deployment hosts one role per process.
   top-level README.
 * Sessions are synchronous and thread-affine: one thread per role for the whole
   run. Never `Task.Run` per message.
-* `OpenOrCreate` may block while it waits for the region; offload it too (the
-  sample's `OpenAsync` does).
+* `SparcRing.OpenProducer`/`OpenConsumer` may block while it waits for the region;
+  offload it too (the sample's open helpers do).
 
 ## 4. Latency-sensitive consumer
 
@@ -101,7 +101,7 @@ named mappings. Swapping the factory is the only change:
 
 ```csharp
 IIpcMemoryRegionFactory factory = new InMemoryMemoryRegionFactory();
-using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(factory, "dev", 1024, 256);
+using IProducerEndpoint producer = SparcRing.OpenProducer(factory, "dev", 1024, 256);
 ```
 
 ## 6. Bridging an unbounded source into a bounded channel

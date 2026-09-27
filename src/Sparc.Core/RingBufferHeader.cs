@@ -8,7 +8,7 @@ namespace Sparc.Core;
 /// in the mapped region; this struct is used to read/validate/populate it.
 /// </summary>
 [StructLayout(LayoutKind.Auto)]
-public struct RingBufferHeader
+internal struct RingBufferHeader
 {
     public ulong Magic;
     public int Version;

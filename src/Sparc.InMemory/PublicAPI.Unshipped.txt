@@ -1,0 +1,7 @@
+#nullable enable
+Sparc.InMemory.InMemoryMemoryRegionFactory
+Sparc.InMemory.InMemoryMemoryRegionFactory.CreateOrOpen(string! name, long size, Sparc.IpcRegionOptions? options = null) -> Sparc.IIpcMemoryRegion!
+Sparc.InMemory.InMemoryMemoryRegionFactory.InMemoryMemoryRegionFactory() -> void
+Sparc.InMemory.InMemoryMemoryRegionFactory.IsSupported.get -> bool
+Sparc.InMemory.InMemoryMemoryRegionFactory.OpenExisting(string! name, Sparc.IpcRegionOptions? options = null) -> Sparc.IIpcMemoryRegion!
+Sparc.InMemory.InMemoryMemoryRegionFactory.TryReset(string! name) -> bool

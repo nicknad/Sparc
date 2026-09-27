@@ -27,7 +27,7 @@ public sealed class WindowsNamedMemoryMappedRegionFactory : IIpcMemoryRegionFact
     public IIpcMemoryRegion CreateOrOpen(string name, long size, IpcRegionOptions? options = null)
     {
         EnsureSupported();
-        ArgumentException.ThrowIfNullOrEmpty(name);
+        RegionName.Validate(name);
         ArgumentOutOfRangeException.ThrowIfLessThan(size, 1);
         options ??= IpcRegionOptions.Default;
 
@@ -54,7 +54,7 @@ public sealed class WindowsNamedMemoryMappedRegionFactory : IIpcMemoryRegionFact
     public IIpcMemoryRegion OpenExisting(string name, IpcRegionOptions? options = null)
     {
         EnsureSupported();
-        ArgumentException.ThrowIfNullOrEmpty(name);
+        RegionName.Validate(name);
         options ??= IpcRegionOptions.Default;
 
         long startTimestamp = options.TimeProvider.GetTimestamp();

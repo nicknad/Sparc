@@ -9,8 +9,8 @@ wait modes, platform implementations, and crash semantics.
 ```
 host (CLI / BackgroundService / sample)
   |  ProducerSession / ConsumerSession          Sparc.Client
-  |  IRingBufferEndpoint: Connect, states, waiting flags
-  |  SharedRingBuffer / SpscRingBuffer          Sparc.Core
+  |  IEndpoint / IProducerEndpoint / IConsumerEndpoint: role, states, waiting flags
+  |  SparcRing / SharedRingBuffer / SpscRingBuffer          Sparc.Core
   |  RingBufferRegion (handshake, header, validation)
   |  SlotFraming / RingBufferLayout (binary protocol)
   |  IIpcMemoryRegionFactory / IIpcMemoryRegion Sparc.Abstractions
@@ -26,8 +26,8 @@ and size, `IsSupported`, `TryReset`).
 
 ## 2. Region lifecycle
 
-`SharedRingBuffer.OpenOrCreate(factory, name, capacity, slotSize, options)`
-delegates to `RingBufferRegion.CreateOrOpen`:
+`SparcRing.OpenProducer` / `SparcRing.OpenConsumer` (factory, name, capacity,
+slotSize, options) delegate to `RingBufferRegion.CreateOrOpen`:
 
 1. Ask the factory for the region. The first caller creates it; others join.
    On Windows this is `MemoryMappedFile.CreateNew` / `OpenExisting`; on Unix a

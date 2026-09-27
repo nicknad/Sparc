@@ -9,7 +9,7 @@ namespace Sparc.Client;
 /// <remarks>
 /// A raise is only a hint: the waiting session always re-checks the ring buffer
 /// after waking, and the raising session only raises when the peer declared
-/// itself waiting (<see cref="Core.IRingBufferEndpoint.IsPeerWaiting"/>).
+/// itself waiting (<see cref="Sparc.Core.IEndpoint.IsPeerWaiting"/>).
 /// Losing a raise is therefore harmless; it can only cause the waiter to rely
 /// on its bounded timeout instead of waking immediately.
 /// </remarks>

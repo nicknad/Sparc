@@ -51,7 +51,7 @@ internal static class Program
         IIpcMemoryRegionFactory factory = OperatingSystem.IsWindows()
             ? new WindowsNamedMemoryMappedRegionFactory()
             : new UnixFileMemoryMappedRegionFactory();
-        using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(
+        using IConsumerEndpoint buffer = SparcRing.OpenConsumer(
             factory,
             options.Name,
             options.Capacity,
@@ -62,6 +62,7 @@ internal static class Program
                 RecreateIfStale = options.RecreateStale,
                 RequireExisting = options.RequireExisting,
                 AdoptExistingGeometry = true,
+                Takeover = options.Takeover,
             });
 
         if (!options.Quiet)
@@ -127,7 +128,7 @@ internal static class Program
         _ => RingBufferExitCodes.InternalError,
     };
 
-    private static void PrintSummary(ConsumerRunResult result, SharedRingBuffer buffer)
+    private static void PrintSummary(ConsumerRunResult result, IConsumerEndpoint buffer)
     {
         double seconds = result.Elapsed.TotalSeconds;
         double messagesPerSecond = seconds > 0 ? result.Received / seconds : 0;

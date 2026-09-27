@@ -1,7 +1,7 @@
 namespace Sparc.Core;
 
 /// <summary>Identifies which side of the buffer an instance owns.</summary>
-public enum RingBufferEndpointRole
+internal enum RingBufferEndpointRole
 {
     Producer = 0,
     Consumer = 1,

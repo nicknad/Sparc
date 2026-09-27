@@ -97,7 +97,7 @@ Console.CancelKeyPress += (_, eventArgs) =>
     cancellation.Cancel();
 };
 
-using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(
+using IConsumerEndpoint buffer = SparcRing.OpenConsumer(
     factory,
     name,
     capacity,
@@ -108,7 +108,6 @@ using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(
         AdoptExistingGeometry = true,
     });
 
-buffer.Connect(RingBufferEndpointRole.Consumer, cancellationToken: cancellation.Token);
 Console.WriteLine(
     $"ready: role=consumer name={buffer.Name} capacity={buffer.Capacity} slotSize={buffer.SlotSize} medianHeader={header}");
 

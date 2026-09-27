@@ -7,6 +7,20 @@ namespace Sparc.ConcurrencyTests;
 /// <summary>Shared plumbing for two-thread SPSC verification runs.</summary>
 internal static class TransferRunner
 {
+    /// <summary>
+    /// Minimal view over either buffer implementation. The tests only need
+    /// write/read, and the two types deliberately share no interface (the
+    /// shared-memory one is role-typed), so each is adapted here.
+    /// </summary>
+    internal interface ITransferRing
+    {
+        int MaxPayloadSize { get; }
+
+        bool TryWrite(int type, ReadOnlySpan<byte> payload);
+
+        bool TryRead(Span<byte> destination, out int bytesRead, out int type);
+    }
+
     internal sealed record Result(long Produced, long Consumed, TimeSpan Elapsed)
     {
         public double MessagesPerSecond => Elapsed.TotalSeconds > 0 ? Consumed / Elapsed.TotalSeconds : 0;
@@ -19,7 +33,7 @@ internal static class TransferRunner
     /// ordering, length and contents, so losses, duplicates, reorders and
     /// corruption all fail the run.
     /// </summary>
-    public static Result Run(IRingBuffer producerBuffer, IRingBuffer consumerBuffer, long total, int payloadSize, TimeSpan timeout)
+    public static Result Run(ITransferRing producerBuffer, ITransferRing consumerBuffer, long total, int payloadSize, TimeSpan timeout)
     {
         Exception? producerError = null;
         Exception? consumerError = null;
@@ -148,4 +162,24 @@ internal static class TransferRunner
             return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
         }
     }
+}
+
+internal sealed class SpscTransferRing(SpscRingBuffer buffer) : TransferRunner.ITransferRing
+{
+    public int MaxPayloadSize => buffer.MaxPayloadSize;
+
+    public bool TryWrite(int type, ReadOnlySpan<byte> payload) => buffer.TryWrite(type, payload);
+
+    public bool TryRead(Span<byte> destination, out int bytesRead, out int type) =>
+        buffer.TryRead(destination, out bytesRead, out type);
+}
+
+internal sealed class SharedTransferRing(SharedRingBuffer buffer) : TransferRunner.ITransferRing
+{
+    public int MaxPayloadSize => buffer.MaxPayloadSize;
+
+    public bool TryWrite(int type, ReadOnlySpan<byte> payload) => buffer.TryWrite(type, payload);
+
+    public bool TryRead(Span<byte> destination, out int bytesRead, out int type) =>
+        buffer.TryRead(destination, out bytesRead, out type);
 }

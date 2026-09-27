@@ -69,7 +69,7 @@ in mind, and open an issue for anything that does not hold up.
 │   ├── Sparc.InMemory/               pinned managed-array factory for tests and single-process development
 │   ├── Sparc.UnixMemoryMapped/       Unix file-backed implementation + DI registration
 │   ├── Sparc.WindowsMemoryMapped/    Windows named memory-mapped implementation + DI registration
-│   ├── Sparc.Core/            ring protocol: layout/header/framing, SpscRingBuffer, SharedRingBuffer
+│   ├── Sparc.Core/            ring protocol: layout/framing, role-typed endpoints, SpscRingBuffer
 │   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
 │   ├── Sparc.Producer/        producer CLI (args → session → summary → exit code)
 │   └── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
@@ -178,7 +178,7 @@ Reference the projects (or packages once published) you need:
 | `Sparc.InMemory` | you want the whole ring/session stack without the OS (tests, samples, single-process development) |
 | `Sparc.UnixMemoryMapped` | you run on Linux/macOS and want file-backed regions (+ DI) |
 | `Sparc.WindowsMemoryMapped` | you run on Windows and want named memory-mapped regions (+ DI) |
-| `Sparc.Core` | you need the buffer (`SpscRingBuffer`, `SharedRingBuffer`) |
+| `Sparc.Core` | you need the role-typed endpoints (`SparcRing`, `IProducerEndpoint`, `IConsumerEndpoint`) or the in-process `SpscRingBuffer` |
 | `Sparc.Client` | you need producer/consumer sessions and verification |
 
 ### Web app / worker service / generic host
@@ -208,11 +208,12 @@ sealed class OrderProducerWorker(
 {
     protected override Task ExecuteAsync(CancellationToken stoppingToken) => Task.Run(() =>
     {
-        using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(
+        using IProducerEndpoint producer = SparcRing.OpenProducer(
             factory, "orders", capacity: 1024, slotSize: 256,
-            new SharedRingBufferOptions { OpenTimeout = TimeSpan.FromSeconds(30) });
+            new SharedRingBufferOptions { OpenTimeout = TimeSpan.FromSeconds(30) },
+            stoppingToken);
 
-        ProducerSession session = new(buffer, new ProducerSessionOptions
+        ProducerSession session = new(producer, new ProducerSessionOptions
         {
             Count = 1_000_000,
             PayloadSize = 64,
@@ -257,7 +258,7 @@ flags), so a running peer pays nothing; the waiter always re-checks the buffer, 
 raise only means falling back to a bounded poll slice.
 
 Cancellation is checked on the full/empty paths and periodically on the hot path;
-`SharedRingBuffer.Connect` and `SpscRingBuffer.Write` also accept a `CancellationToken`
+`SparcRing.OpenProducer`/`SparcRing.OpenConsumer` and `SpscRingBuffer.Write` also accept a `CancellationToken`
 that bounds their spin loops, and the sessions report cancellation during role claiming as
 `SessionStopReason.Cancelled` rather than throwing. `ProducerSessionOptions`/
 `ConsumerSessionOptions` also accept a `PerMessageDelay` (CLI: `--delay-us`) to pace one
@@ -289,7 +290,7 @@ dotnet run -c Release --project samples/yarp/Sparc.YarpProxy
 ```
 YARP proxy process                                     consumer process
 ┌─────────────────────────────┐                        ┌──────────────────────────┐
-│ request pipeline            │                        │ SharedRingBuffer         │
+│ request pipeline            │                        │ consumer endpoint        │
 │   capture route + headers   │                        │   decode JSON captures   │
 │        │                    │                        │   parse --header values  │
 │        ▼                    │                        │   median / p95 / max     │
@@ -313,7 +314,8 @@ disables the built-in load generator so you can drive `/proxy/{**}` yourself.
 The consumer decodes each capture, parses the configured `--header` (default
 `x-sample-value`) as a number, keeps a capped sample list and prints median/p95/max
 every 5 s and at the end. `--expected-median` turns the final report into a PASS/FAIL
-check (exit code 1 on failure). Both samples use `SharedRingBuffer` directly rather than
+check (exit code 1 on failure). Both samples use the role-typed producer/consumer
+endpoints directly rather than
 the session classes, because captures are variable-length JSON payloads; the sessions
 speak the fixed `[sequence][timestamp][fill]` protocol.
 
@@ -457,7 +459,7 @@ Region size is exactly `192 + Capacity × SlotSize` bytes (1024 × 256 → 262,3
 
 ### Initialization handshake and platform abstraction
 
-`SharedRingBuffer.OpenOrCreate(factory, …)` asks the factory for the region and then
+`SparcRing.OpenProducer`/`OpenConsumer` ask the factory for the region and then
 performs the protocol handshake in `RingBufferRegion`:
 
 * `factory.CreateOrOpen(name, size, options)` either creates a region or joins the

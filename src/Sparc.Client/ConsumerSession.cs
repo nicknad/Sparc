@@ -16,13 +16,13 @@ public sealed class ConsumerSession
     private const int ProgressReports = 10;
     private const long CancellationCheckMask = 0xFFFF;
 
-    private readonly IRingBufferEndpoint _buffer;
+    private readonly IConsumerEndpoint _buffer;
     private readonly ConsumerSessionOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger _logger;
 
     public ConsumerSession(
-        IRingBufferEndpoint buffer,
+        IConsumerEndpoint buffer,
         ConsumerSessionOptions options,
         TimeProvider? timeProvider = null,
         ILogger? logger = null)
@@ -48,7 +48,7 @@ public sealed class ConsumerSession
     {
         try
         {
-            _buffer.Connect(RingBufferEndpointRole.Consumer, _options.Takeover, cancellationToken);
+            _buffer.Connect(_options.Takeover, cancellationToken);
         }
         catch (OperationCanceledException)
         {

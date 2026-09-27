@@ -17,6 +17,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Sparc.UnitTests" />
     <InternalsVisibleTo Include="Sparc.ConcurrencyTests" />
+    <InternalsVisibleTo Include="Sparc.Benchmarks" />
   </ItemGroup>
 
 </Project>

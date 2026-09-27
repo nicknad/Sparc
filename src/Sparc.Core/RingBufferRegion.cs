@@ -14,7 +14,7 @@ namespace Sparc.Core;
 /// <see cref="IIpcMemoryRegionFactory"/> implementation (for example
 /// named memory-mapped files on Windows).
 /// </remarks>
-public sealed class RingBufferRegion : IDisposable
+internal sealed class RingBufferRegion : IDisposable
 {
     private readonly IIpcMemoryRegion _region;
     private int _disposed;
@@ -99,7 +99,7 @@ public sealed class RingBufferRegion : IDisposable
         SharedRingBufferOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(factory);
-        ArgumentException.ThrowIfNullOrEmpty(name);
+        RegionName.Validate(name);
         RingBufferLayout.ValidateGeometry(capacity, slotSize);
         options ??= SharedRingBufferOptions.Default;
 

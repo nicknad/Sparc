@@ -25,6 +25,14 @@ public sealed class SharedRingBufferOptions
     /// </summary>
     public bool AdoptExistingGeometry { get; init; }
 
+    /// <summary>
+    /// When true, <see cref="SparcRing.OpenProducer"/> and
+    /// <see cref="SparcRing.OpenConsumer"/> reclaim the role from a crashed
+    /// peer instead of failing with a role conflict. Destructive: the caller
+    /// must be sure the previous holder is gone.
+    /// </summary>
+    public bool Takeover { get; init; }
+
     /// <summary>Clock used for timeout handling; replace in tests.</summary>
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
 }

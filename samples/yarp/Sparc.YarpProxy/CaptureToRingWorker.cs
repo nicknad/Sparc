@@ -45,11 +45,10 @@ internal sealed class CaptureToRingWorker(
         int capacity = configuration.GetValue("Sparc:RingCapacity", YarpCaptureProtocol.Capacity);
         int slotSize = configuration.GetValue("Sparc:RingSlotSize", YarpCaptureProtocol.SlotSize);
 
-        using SharedRingBuffer buffer = await Task.Run(
-            () => SharedRingBuffer.OpenOrCreate(factory, RingName, capacity, slotSize),
+        using IProducerEndpoint buffer = await Task.Run(
+            () => SparcRing.OpenProducer(factory, RingName, capacity, slotSize),
             stoppingToken).ConfigureAwait(false);
 
-        buffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: stoppingToken);
         logger.LogInformation(
             "SPARC producer ready: name={Name} capacity={Capacity} slotSize={SlotSize} maxPayload={MaxPayload}",
             buffer.Name, buffer.Capacity, buffer.SlotSize, buffer.MaxPayloadSize);
@@ -63,7 +62,7 @@ internal sealed class CaptureToRingWorker(
                 continue;
             }
 
-            if (buffer.TryWrite(type: 0, payload))
+            if (buffer.TryPublish(type: 0, payload))
             {
                 Interlocked.Increment(ref _written);
             }

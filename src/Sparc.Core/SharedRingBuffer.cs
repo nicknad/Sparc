@@ -26,9 +26,10 @@ namespace Sparc.Core;
 /// mapped region while the buffer is in use.
 /// </para>
 /// </remarks>
-public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
+internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
 {
     private const int WriteTimeoutSeconds = 30;
+    private const int ReadTimeoutSeconds = 30;
     private const int MaxRoleClaimAttempts = 1 << 20;
 
     private readonly RingBufferRegion _region;
@@ -165,6 +166,11 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
     {
         ThrowIfDisposed();
 
+        if (_role == role)
+        {
+            return; // already claimed by this instance (SparcRing connects at open)
+        }
+
         for (int attempt = 0; attempt < MaxRoleClaimAttempts; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -193,7 +199,23 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
             "another process keeps changing the endpoint state.");
     }
 
-    /// <inheritdoc />
+    void IProducerEndpoint.Connect(bool takeover, CancellationToken cancellationToken) =>
+        Connect(RingBufferEndpointRole.Producer, takeover, cancellationToken);
+
+    void IConsumerEndpoint.Connect(bool takeover, CancellationToken cancellationToken) =>
+        Connect(RingBufferEndpointRole.Consumer, takeover, cancellationToken);
+
+    /// <summary>Publishes a message; alias of <see cref="TryWrite"/> for the producer role.</summary>
+    public bool TryPublish(int type, ReadOnlySpan<byte> payload) => TryWrite(type, payload);
+
+    /// <summary>Blocking publish; alias of <see cref="Write"/> for the producer role.</summary>
+    public void Publish(int type, ReadOnlySpan<byte> payload, CancellationToken cancellationToken = default) =>
+        Write(payload, type, cancellationToken);
+
+    /// <summary>
+    /// Attempts to copy one message into the buffer. Returns false when the
+    /// buffer is full. Concrete counterpart of <see cref="TryPublish"/>.
+    /// </summary>
     public bool TryWrite(int type, ReadOnlySpan<byte> payload)
     {
         ThrowIfDisposed();
@@ -463,6 +485,92 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
 
             spin.SpinOnce();
         }
+    }
+
+    /// <summary>
+    /// Reserves the next slot and returns a lease that publishes on dispose.
+    /// Returns false when the buffer is full.
+    /// </summary>
+    public bool TryBeginWrite(int type, int length, out WriteLease lease)
+    {
+        if (TryReserveWrite(type, length, out Span<byte> payload))
+        {
+            lease = new WriteLease(this, payload);
+            return true;
+        }
+
+        lease = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Blocking variant of <see cref="TryBeginWrite"/>: spins until a slot is
+    /// free, the caller cancels, or the buffer stays full for
+    /// <see cref="WriteTimeoutSeconds"/> seconds.
+    /// </summary>
+    public WriteLease BeginWrite(int type, int length, CancellationToken cancellationToken = default)
+    {
+        long startTimestamp = Stopwatch.GetTimestamp();
+        long timeoutTicks = WriteTimeoutSeconds * Stopwatch.Frequency;
+        SpinWait spin = new();
+        Span<byte> payload;
+        while (!TryReserveWrite(type, length, out payload))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Stopwatch.GetTimestamp() - startTimestamp >= timeoutTicks)
+            {
+                throw new RingBufferTimeoutException(
+                    $"Buffer stayed full for {WriteTimeoutSeconds} seconds; the peer is not consuming.");
+            }
+
+            spin.SpinOnce();
+        }
+
+        return new WriteLease(this, payload);
+    }
+
+    /// <summary>
+    /// Returns a lease over the oldest message that releases the slot on
+    /// dispose. Returns false when the buffer is empty.
+    /// </summary>
+    public bool TryBeginRead(out ReadLease lease)
+    {
+        if (TryPeek(out ReadOnlySpan<byte> payload, out int length, out int type))
+        {
+            lease = new ReadLease(this, payload, length, type);
+            return true;
+        }
+
+        lease = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Blocking variant of <see cref="TryBeginRead"/>: spins until a message
+    /// arrives, the caller cancels, or the buffer stays empty for
+    /// <see cref="ReadTimeoutSeconds"/> seconds.
+    /// </summary>
+    public ReadLease Read(CancellationToken cancellationToken = default)
+    {
+        long startTimestamp = Stopwatch.GetTimestamp();
+        long timeoutTicks = ReadTimeoutSeconds * Stopwatch.Frequency;
+        SpinWait spin = new();
+        ReadOnlySpan<byte> payload;
+        int length;
+        int type;
+        while (!TryPeek(out payload, out length, out type))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Stopwatch.GetTimestamp() - startTimestamp >= timeoutTicks)
+            {
+                throw new RingBufferTimeoutException(
+                    $"Buffer stayed empty for {ReadTimeoutSeconds} seconds; the peer is not producing.");
+            }
+
+            spin.SpinOnce();
+        }
+
+        return new ReadLease(this, payload, length, type);
     }
 
     /// <inheritdoc />
