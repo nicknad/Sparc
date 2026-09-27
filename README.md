@@ -34,6 +34,17 @@ Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in
 
 ---
 
+## AI assistance
+
+The implementation and documentation in this repository were generated with AI
+assistance (**DeepSeek Flash 4.1**) under the maintainer's direction and then
+tested and benchmarked. The full test suite (107 unit, concurrency and process
+tests) and the benchmark harness ship with the repository so the result can be
+verified independently — it is nonetheless AI-authored code: read it with that
+in mind, and open an issue for anything that does not hold up.
+
+---
+
 ## Documentation
 
 `docs/` goes deeper than this file:
