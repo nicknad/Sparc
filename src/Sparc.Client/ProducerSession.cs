@@ -28,7 +28,8 @@ public sealed class ProducerSession
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(options);
-        options.Validate(buffer.MaxPayloadSize);
+        ProducerSessionOptions.Validate(
+            options.Count, options.PayloadSize, options.PerMessageDelay, buffer.MaxPayloadSize);
 
         _buffer = buffer;
         _options = options;

@@ -54,7 +54,7 @@ internal static class SparcProcesses
 
         while (true)
         {
-            string? line = await process.StandardOutput.ReadLineAsync(cts.Token);
+            string? line = await process.StandardOutput.ReadLineAsync(cts.Token).ConfigureAwait(false);
             if (line is null)
             {
                 throw new InvalidOperationException(
@@ -76,16 +76,16 @@ internal static class SparcProcesses
         using CancellationTokenSource cts = new(timeoutMs);
         try
         {
-            await process.WaitForExitAsync(cts.Token);
+            await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
             Kill(process);
-            await process.WaitForExitAsync();
-            return new ProcessResult(-1, await stdout, await stderr);
+            await process.WaitForExitAsync().ConfigureAwait(false);
+            return new ProcessResult(-1, await stdout.ConfigureAwait(false), await stderr.ConfigureAwait(false));
         }
 
-        return new ProcessResult(process.ExitCode, await stdout, await stderr);
+        return new ProcessResult(process.ExitCode, await stdout.ConfigureAwait(false), await stderr.ConfigureAwait(false));
     }
 
     public static void Kill(Process process)

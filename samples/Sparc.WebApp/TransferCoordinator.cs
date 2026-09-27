@@ -12,7 +12,7 @@ public sealed class TransferCoordinator
 {
     private readonly Channel<int> _requests = Channel.CreateUnbounded<int>();
     private readonly TimeProvider _timeProvider;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
 
     private string _phase = "idle";
     private ProducerRunResult? _producer;
@@ -37,7 +37,7 @@ public sealed class TransferCoordinator
     {
         lock (_gate)
         {
-            if (_phase == "running")
+            if (string.Equals(_phase, "running", StringComparison.Ordinal))
             {
                 return false;
             }

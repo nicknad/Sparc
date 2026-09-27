@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Sparc.Benchmarks.Pumps;
@@ -18,23 +19,29 @@ namespace Sparc.Benchmarks;
 /// </summary>
 internal static class LatencyRunner
 {
+    private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
+
     private static readonly Regex ProducerPattern = new(
         @"produced=(?<count>\d+) .* throughput=(?<throughput>\d+) msg/s dataThroughput=(?<mib>[\d.]+) MiB/s",
-        RegexOptions.Compiled);
+        RegexOptions.Compiled,
+        RegexTimeout);
 
     private static readonly Regex ConsumerPattern = new(
         @"consumed=(?<count>\d+) bytes=(?<bytes>\d+) .* throughput=(?<throughput>\d+) msg/s dataThroughput=(?<mib>[\d.]+) MiB/s",
-        RegexOptions.Compiled);
+        RegexOptions.Compiled,
+        RegexTimeout);
 
     private static readonly Regex ProducerReadyPattern = new(
         @"capacity=(?<capacity>\d+) slotSize=(?<slot>\d+)",
-        RegexOptions.Compiled);
+        RegexOptions.Compiled,
+        RegexTimeout);
 
     private static readonly Regex LatencyPattern = new(
         @"min=(?<min>[\d.]+) mean=(?<mean>[\d.]+) p50=(?<p50>[\d.]+) p90=(?<p90>[\d.]+) " +
         @"p95=(?<p95>[\d.]+) p99=(?<p99>[\d.]+) p99\.9=(?<p99_9>[\d.]+) max=(?<max>[\d.]+) " +
         @"\(n=(?<n>\d+)\)",
-        RegexOptions.Compiled);
+        RegexOptions.Compiled,
+        RegexTimeout);
 
     public static void Run(string[] args)
     {
@@ -96,7 +103,7 @@ internal static class LatencyRunner
                     consumerDelayUs = int.Parse(args[++i], CultureInfo.InvariantCulture);
                     break;
                 default:
-                    throw new ArgumentException($"Unknown argument '{args[i]}'.");
+                    throw new ArgumentException($"Unknown argument '{args[i]}'.", nameof(args));
             }
         }
 
@@ -104,10 +111,11 @@ internal static class LatencyRunner
         {
             if (transport is not "shared-xproc")
             {
-                throw new ArgumentException("--sizes is only supported for --transport shared-xproc.");
+                throw new ArgumentException(
+                    "--sizes is only supported for --transport shared-xproc.", nameof(args));
             }
 
-            ArgumentOutOfRangeException.ThrowIfLessThan(repeats, 1);
+            ValidateRepeats(repeats);
             RunCrossProcessSweep(
                 sizes, count, repeats, capacity, slotSize, producerDelayUs, consumerDelayUs, verify, verifyPayload, spinOnly);
             return;
@@ -232,10 +240,13 @@ internal static class LatencyRunner
         sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.P99)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(8));
         sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.P999)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(8));
         sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.Max)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(10));
-        sb.Append(" | ").Append($"{producerCpu:F0}/{consumerCpu:F0} %");
+        sb.Append(" | ").Append(FormattableString.Invariant($"{producerCpu:F0}/{consumerCpu:F0} %"));
         sb.Append(" |");
         return sb.ToString();
     }
+
+    private static void ValidateRepeats(int repeats) =>
+        ArgumentOutOfRangeException.ThrowIfLessThan(repeats, 1);
 
     private static CrossProcessRun? RunCrossProcess(
         int size,
@@ -365,12 +376,14 @@ internal static class LatencyRunner
         // The producer prints the geometry it actually created; fall back to the
         // requested values if the line is missing (for example a quiet build).
         Match ready = ProducerReadyPattern.Match(output);
-        int actualCapacity = ready.Success && int.TryParse(ready.Groups["capacity"].Value, out int parsedCapacity)
-            ? parsedCapacity
-            : capacity;
-        int actualSlotSize = ready.Success && int.TryParse(ready.Groups["slot"].Value, out int parsedSlot)
-            ? parsedSlot
-            : slotSize > 0 ? slotSize : Math.Max(RingBufferLayout.DefaultSlotSize, payloadSize + RingBufferLayout.MessageHeaderSize);
+        int actualCapacity = ready.Success &&
+            int.TryParse(ready.Groups["capacity"].Value, CultureInfo.InvariantCulture, out int parsedCapacity)
+                ? parsedCapacity
+                : capacity;
+        int actualSlotSize = ready.Success &&
+            int.TryParse(ready.Groups["slot"].Value, CultureInfo.InvariantCulture, out int parsedSlot)
+                ? parsedSlot
+                : slotSize > 0 ? slotSize : Math.Max(RingBufferLayout.DefaultSlotSize, payloadSize + RingBufferLayout.MessageHeaderSize);
 
         return new ProducerSample(
             long.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture),
@@ -477,10 +490,13 @@ internal static class LatencyRunner
         throw new InvalidOperationException("Could not locate the repository root.");
     }
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct ProducerSample(long Count, double MsgPerSec, double MibPerSec, int Capacity, int SlotSize);
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct ConsumerSample(long Count, double MsgPerSec, double MibPerSec, LatencyStats Latency);
 
+    [StructLayout(LayoutKind.Auto)]
     private readonly record struct LatencyStats(
         long Count, double Min, double Mean, double P50, double P90, double P95, double P99, double P999, double Max);
 

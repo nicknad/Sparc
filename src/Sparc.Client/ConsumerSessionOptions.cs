@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Sparc.Client.Diagnostics;
 
 namespace Sparc.Client;
@@ -44,6 +45,7 @@ public sealed class ConsumerSessionOptions
 }
 
 /// <summary>Progress notification emitted every ~10% of the requested count.</summary>
+[StructLayout(LayoutKind.Auto)]
 public readonly record struct ConsumerProgress(long Received, long ReceivedBytes, TimeSpan Elapsed);
 
 /// <summary>Outcome of a consumer session.</summary>

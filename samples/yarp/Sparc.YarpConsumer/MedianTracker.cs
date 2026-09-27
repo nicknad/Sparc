@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 
 namespace Sparc.YarpConsumer;
 
 /// <summary>Median/p95 summary over the sampled header values of one run.</summary>
+[StructLayout(LayoutKind.Auto)]
 internal readonly record struct MedianReport(int Samples, double Median, double P95, double Max);
 
 /// <summary>

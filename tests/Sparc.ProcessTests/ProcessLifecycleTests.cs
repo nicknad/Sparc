@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace Sparc.ProcessTests;
 
-public class ProcessTests(ITestOutputHelper output)
+public class ProcessLifecycleTests(ITestOutputHelper output)
 {
     private const int ProcessTimeoutMs = 60_000;
 

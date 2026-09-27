@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace Sparc.Core;
 
@@ -6,6 +7,7 @@ namespace Sparc.Core;
 /// Managed snapshot of the fixed-size region header. The authoritative copy lives
 /// in the mapped region; this struct is used to read/validate/populate it.
 /// </summary>
+[StructLayout(LayoutKind.Auto)]
 public struct RingBufferHeader
 {
     public ulong Magic;

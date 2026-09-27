@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Sparc.Core;
 
 namespace Sparc.Client;
@@ -33,21 +34,22 @@ public sealed class ProducerSessionOptions
     /// </summary>
     public SessionWaitMode WaitMode { get; init; } = SessionWaitMode.SpinThenSleep;
 
-    internal void Validate(int maxPayloadSize)
+    internal static void Validate(long count, int payloadSize, TimeSpan perMessageDelay, int maxPayloadSize)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(Count, 1);
-        ArgumentOutOfRangeException.ThrowIfLessThan(PayloadSize, RingBufferMessage.HeaderSize);
-        ArgumentOutOfRangeException.ThrowIfLessThan(PerMessageDelay, TimeSpan.Zero);
-        if (PayloadSize > maxPayloadSize)
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(payloadSize, RingBufferMessage.HeaderSize);
+        ArgumentOutOfRangeException.ThrowIfLessThan(perMessageDelay, TimeSpan.Zero);
+        if (payloadSize > maxPayloadSize)
         {
             throw new ArgumentOutOfRangeException(
-                nameof(PayloadSize), PayloadSize,
+                nameof(payloadSize), payloadSize,
                 $"Payload size exceeds the buffer maximum of {maxPayloadSize} bytes.");
         }
     }
 }
 
 /// <summary>Progress notification emitted every ~10% of the requested count.</summary>
+[StructLayout(LayoutKind.Auto)]
 public readonly record struct ProducerProgress(long Produced, TimeSpan Elapsed);
 
 /// <summary>Outcome of a producer session.</summary>

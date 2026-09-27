@@ -1,0 +1,11 @@
+root = true
+
+[*.cs]
+dotnet_diagnostic.MA0048.severity = none
+dotnet_diagnostic.MA0051.severity = warning
+MA0051.maximum_lines_per_method = 150
+MA0051.maximum_statements_per_method = 100
+MA0015.consider_member_access_as_parameter = true
+
+[benchmarks/**/*.cs]
+dotnet_diagnostic.MA0158.severity = none
