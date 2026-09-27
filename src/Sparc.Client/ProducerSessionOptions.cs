@@ -6,7 +6,7 @@ namespace Sparc.Client;
 /// <summary>Options for <see cref="ProducerSession"/>.</summary>
 public sealed class ProducerSessionOptions
 {
-    /// <summary>Messages to write. Must be positive.</summary>
+    /// <summary>Messages to write; 0 means "until cancelled or the peer stops".</summary>
     public long Count { get; init; } = 1_000_000;
 
     /// <summary>Payload bytes per message, including the 16-byte protocol header.</summary>
@@ -14,6 +14,23 @@ public sealed class ProducerSessionOptions
 
     /// <summary>Type tag stored in each slot.</summary>
     public int MessageType { get; init; } = 1;
+
+    /// <summary>
+    /// When true (default), the session stamps every payload with its
+    /// <c>[sequence:int64][timestamp:int64][fill...]</c> protocol, which is what
+    /// the consumer verifies and samples latency from. Set to false to own the
+    /// whole payload through <see cref="PayloadWriter"/>; the consumer must then
+    /// also be configured with <c>IncludeSessionHeader = false</c>.
+    /// </summary>
+    public bool IncludeSessionHeader { get; init; } = true;
+
+    /// <summary>
+    /// Optional payload writer, called once per message with the full payload
+    /// span. When <see cref="IncludeSessionHeader"/> is true the header is
+    /// already written and the writer fills the remainder; when false the writer
+    /// owns the whole span (and the payload is zero-filled when no writer is set).
+    /// </summary>
+    public SessionPayloadWriter? PayloadWriter { get; init; }
 
     /// <summary>Abort when the buffer stays full this long (the consumer may be gone).</summary>
     public TimeSpan FullTimeout { get; init; } = TimeSpan.FromSeconds(30);
@@ -44,7 +61,7 @@ public sealed class ProducerSessionOptions
 
     internal static void Validate(long count, int payloadSize, TimeSpan perMessageDelay, int maxPayloadSize)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 0);
         ArgumentOutOfRangeException.ThrowIfLessThan(payloadSize, RingBufferMessage.HeaderSize);
         ArgumentOutOfRangeException.ThrowIfLessThan(perMessageDelay, TimeSpan.Zero);
         if (payloadSize > maxPayloadSize)
@@ -55,6 +72,15 @@ public sealed class ProducerSessionOptions
         }
     }
 }
+
+/// <summary>
+/// Writes the payload of one session message. The session owns the slot and
+/// publishes it after the delegate returns; the span is only valid for the
+/// duration of the call.
+/// </summary>
+/// <param name="index">Zero-based message index within the run.</param>
+/// <param name="payload">Full payload span for this message.</param>
+public delegate void SessionPayloadWriter(long index, Span<byte> payload);
 
 /// <summary>Progress notification emitted every ~10% of the requested count.</summary>
 [StructLayout(LayoutKind.Auto)]

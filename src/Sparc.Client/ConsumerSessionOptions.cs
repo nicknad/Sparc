@@ -12,6 +12,16 @@ public sealed class ConsumerSessionOptions
     /// <summary>Expected type tag.</summary>
     public int ExpectedType { get; init; } = 1;
 
+    /// <summary>
+    /// When true (default), the payload carries the session's
+    /// <c>[sequence:int64][timestamp:int64][fill...]</c> protocol, so sequence,
+    /// payload fill and one-way latency are verified/sampled. Set to false when
+    /// the producer owns the whole payload
+    /// (<c>ProducerSessionOptions.IncludeSessionHeader = false</c>); sequence,
+    /// fill and latency checks are then skipped and the type tag is still checked.
+    /// </summary>
+    public bool IncludeSessionHeader { get; init; } = true;
+
     /// <summary>Validate sequence numbers and the message type.</summary>
     public bool Verify { get; init; } = true;
 

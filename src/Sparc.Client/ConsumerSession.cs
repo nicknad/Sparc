@@ -144,6 +144,49 @@ public sealed class ConsumerSession
     }
 
     /// <summary>
+    /// Runs the blocking session on a dedicated thread so hosts can await it.
+    /// Cancellation is reported through the result, never thrown.
+    /// </summary>
+    public Task<ConsumerRunResult> RunAsync(
+        CancellationToken cancellationToken = default,
+        IProgress<ConsumerProgress>? progress = null) =>
+        Task.Factory.StartNew(
+            () => Run(cancellationToken, progress),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+    /// <summary>
+    /// Waits until the producer claims its role (<see cref="RingBufferEndpointState.Running"/>)
+    /// or <paramref name="timeout"/> elapses. Returns false when the producer did
+    /// not appear or has already stopped.
+    /// </summary>
+    public async Task<bool> WaitForPeerAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        long startTimestamp = _timeProvider.GetTimestamp();
+        while (true)
+        {
+            RingBufferEndpointState peer = _buffer.ProducerState;
+            if (peer is RingBufferEndpointState.Running)
+            {
+                return true;
+            }
+
+            if (peer is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
+            {
+                return false;
+            }
+
+            if (_timeProvider.GetElapsedTime(startTimestamp) >= timeout)
+            {
+                return false;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(5), _timeProvider, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
     /// Reads and verifies one message. Returns 1 when a message was consumed,
     /// 0 when the buffer is empty, and -1 when verification failed (the reason
     /// is stored in <c>ReadState.Failure</c>).
@@ -177,7 +220,7 @@ public sealed class ConsumerSession
         // Latency sampling is independent of verification: the producer session
         // always stamps sequence and timestamp, so the sample is valid even when
         // the caller disabled structural checks.
-        if (length >= RingBufferMessage.HeaderSize)
+        if (_options.IncludeSessionHeader && length >= RingBufferMessage.HeaderSize)
         {
             long sentTimestamp = RingBufferMessage.ReadTimestamp(payload);
             if (sentTimestamp > 0)
@@ -204,15 +247,18 @@ public sealed class ConsumerSession
     /// <summary>Returns a failure description, or null when the message is valid.</summary>
     private string? Verify(ReadState state, ReadOnlySpan<byte> payload, int length, int type)
     {
-        if (length < RingBufferMessage.HeaderSize)
+        if (_options.IncludeSessionHeader)
         {
-            return $"message {state.Received} is only {length} bytes.";
-        }
+            if (length < RingBufferMessage.HeaderSize)
+            {
+                return $"message {state.Received} is only {length} bytes.";
+            }
 
-        long sequence = RingBufferMessage.ReadSequence(payload);
-        if (sequence != state.Expected)
-        {
-            return $"sequence mismatch at message {state.Received}: expected {state.Expected}, received {sequence}.";
+            long sequence = RingBufferMessage.ReadSequence(payload);
+            if (sequence != state.Expected)
+            {
+                return $"sequence mismatch at message {state.Received}: expected {state.Expected}, received {sequence}.";
+            }
         }
 
         if (type != _options.ExpectedType)
@@ -220,7 +266,9 @@ public sealed class ConsumerSession
             return $"message {state.Received} has type {type}, expected {_options.ExpectedType}.";
         }
 
-        if (_options.VerifyPayload && !RingBufferMessage.IsPayloadIntact(payload, length))
+        if (_options.IncludeSessionHeader
+            && _options.VerifyPayload
+            && !RingBufferMessage.IsPayloadIntact(payload, length))
         {
             return $"message {state.Received} payload is corrupted.";
         }

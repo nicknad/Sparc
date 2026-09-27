@@ -142,7 +142,8 @@ latency(us): min=1.20 mean=122.44 p50=51.20 p90=102.40 p95=204.80 p99=409.60 p99
 `consumer --name <name> [--count n] [--capacity slots] [--slot-size bytes] [--type int]`
 `[--open-timeout ms] [--idle-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--notify] [--recreate-stale] [--require-existing] [--no-verify] [--no-verify-payload] [--quiet]`
 
-`--count 0` on the consumer means "consume until the producer stops".
+`--count 0` means "until the other endpoint stops" on the consumer and
+"until `Ctrl+C`" on the producer.
 `--size` is the payload size; layout is `[sequence:int64][timestamp:int64][fill…]` (min 16 bytes).
 A slot size derived from `--size` is rounded up to a 64-byte cache line (pass `--slot-size`
 to override); this keeps slot boundaries on cache-line boundaries so adjacent slots never
@@ -264,6 +265,12 @@ that bounds their spin loops, and the sessions report cancellation during role c
 `ConsumerSessionOptions` also accept a `PerMessageDelay` (CLI: `--delay-us`) to pace one
 endpoint and simulate a producer/consumer speed mismatch; see the benchmark section for
 measured effects.
+
+Sessions are not limited to the sample message protocol: `ProducerSessionOptions.Count = 0`
+runs until cancelled or the peer stops, `PayloadWriter` owns the payload (with
+`IncludeSessionHeader = false` on both endpoints to skip sequence/fill/latency checks), and
+either session exposes `RunAsync` (blocking loop on a dedicated thread) and
+`WaitForPeerAsync(timeout)`.
 
 Structured outcomes replace console/exit-code decisions:
 

@@ -41,7 +41,7 @@ internal sealed class ProducerOptions
           --name <string>          Name of the shared memory region.
 
         Options:
-          --count <n>              Messages to write (default: 1000000).
+          --count <n>              Messages to write; 0 = until Ctrl+C (default: 1000000).
           --size <bytes>           Payload bytes per message; must be >= 16 and <= slotSize-8 (default: 64).
                                    Layout: [sequence:int64][timestamp:int64][fill...].
           --capacity <slots>       Slot count; power of two (default: 1024).
@@ -82,7 +82,7 @@ internal sealed class ProducerOptions
                     options.Name = reader.RequiredValue(arg, value);
                     break;
                 case "--count":
-                    options.Count = ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: 1);
+                    options.Count = ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: 0);
                     break;
                 case "--size":
                     options.Size = (int)ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: MessageHeaderBytes, max: int.MaxValue);

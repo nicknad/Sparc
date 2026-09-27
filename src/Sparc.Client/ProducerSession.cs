@@ -62,7 +62,7 @@ public sealed class ProducerSession
 
         long fullTimeoutTicks = (long)(_options.FullTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
         long pacingTicks = MessagePacer.TicksFor(_timeProvider, _options.PerMessageDelay);
-        long progressInterval = Math.Max(1, _options.Count / ProgressReports);
+        long progressInterval = _options.Count > 0 ? Math.Max(1, _options.Count / ProgressReports) : 0;
         SpinWait spin = new();
         long produced = 0;
         long fullSince = 0;
@@ -72,14 +72,13 @@ public sealed class ProducerSession
         long startTimestamp = _timeProvider.GetTimestamp();
         long firstPublishTimestamp = 0;
 
-        while (produced < _options.Count)
+        while (_options.Count == 0 || produced < _options.Count)
         {
             // Zero copy: stamp the protocol header and fill inside the shared
             // slot itself, then publish with one release store.
             if (_buffer.TryReserveWrite(_options.MessageType, _options.PayloadSize, out Span<byte> slot))
             {
-                RingBufferMessage.Write(slot, produced, _timeProvider.GetTimestamp());
-                RingBufferMessage.FillPayload(slot);
+                WritePayload(slot, produced);
                 _buffer.CommitWrite();
                 SignalDataIfPeerWaiting();
 
@@ -93,7 +92,7 @@ public sealed class ProducerSession
                 spin.Reset();
                 MessagePacer.Wait(_timeProvider, startTimestamp, produced, pacingTicks);
 
-                if (progress is not null && produced % progressInterval == 0)
+                if (progress is not null && progressInterval > 0 && produced % progressInterval == 0)
                 {
                     progress.Report(new ProducerProgress(produced, _timeProvider.GetElapsedTime(startTimestamp)));
                 }
@@ -124,14 +123,18 @@ public sealed class ProducerSession
                 if (peer is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
                 {
                     reason = SessionStopReason.PeerStopped;
-                    failure = $"consumer is gone (state={peer}) with {_options.Count - produced} messages unsent.";
+                    failure = _options.Count > 0
+                        ? $"consumer is gone (state={peer}) with {_options.Count - produced} messages unsent."
+                        : $"consumer is gone (state={peer}) after {produced} messages.";
                 }
                 else
                 {
                     reason = SessionStopReason.Timeout;
-                    failure =
-                        $"buffer stayed full for {_options.FullTimeout.TotalSeconds:F1}s " +
-                        $"({_options.Count - produced} messages unsent, consumer state={peer}).";
+                    failure = _options.Count > 0
+                        ? $"buffer stayed full for {_options.FullTimeout.TotalSeconds:F1}s " +
+                          $"({_options.Count - produced} messages unsent, consumer state={peer})."
+                        : $"buffer stayed full for {_options.FullTimeout.TotalSeconds:F1}s " +
+                          $"(produced={produced}, consumer state={peer}).";
                 }
 
                 break;
@@ -154,12 +157,83 @@ public sealed class ProducerSession
             _options.PayloadSize,
             elapsed,
             reason,
-            _options.Count - produced,
+            _options.Count > 0 ? _options.Count - produced : 0,
             _buffer.ConsumerState,
             failure)
         {
             ActiveElapsed = activeElapsed,
         };
+    }
+
+    /// <summary>
+    /// Runs the blocking session on a dedicated thread so hosts can await it.
+    /// Cancellation is reported through the result, never thrown.
+    /// </summary>
+    public Task<ProducerRunResult> RunAsync(
+        CancellationToken cancellationToken = default,
+        IProgress<ProducerProgress>? progress = null) =>
+        Task.Factory.StartNew(
+            () => Run(cancellationToken, progress),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+    /// <summary>
+    /// Waits until the consumer claims its role (<see cref="RingBufferEndpointState.Running"/>)
+    /// or <paramref name="timeout"/> elapses. Returns false when the consumer did
+    /// not appear or has already stopped.
+    /// </summary>
+    public async Task<bool> WaitForPeerAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        long startTimestamp = _timeProvider.GetTimestamp();
+        while (true)
+        {
+            RingBufferEndpointState peer = _buffer.ConsumerState;
+            if (peer is RingBufferEndpointState.Running)
+            {
+                return true;
+            }
+
+            if (peer is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
+            {
+                return false;
+            }
+
+            if (_timeProvider.GetElapsedTime(startTimestamp) >= timeout)
+            {
+                return false;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(5), _timeProvider, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Writes one payload. The default path stamps the session protocol; a
+    /// custom <see cref="ProducerSessionOptions.PayloadWriter"/> writes either
+    /// behind the header or instead of it.
+    /// </summary>
+    private void WritePayload(Span<byte> slot, long index)
+    {
+        if (_options.IncludeSessionHeader)
+        {
+            RingBufferMessage.Write(slot, index, _timeProvider.GetTimestamp());
+        }
+
+        if (_options.PayloadWriter is { } writer)
+        {
+            writer(index, slot);
+            return;
+        }
+
+        if (_options.IncludeSessionHeader)
+        {
+            RingBufferMessage.FillPayload(slot);
+        }
+        else
+        {
+            slot.Clear();
+        }
     }
 
     private void SignalDataIfPeerWaiting()
