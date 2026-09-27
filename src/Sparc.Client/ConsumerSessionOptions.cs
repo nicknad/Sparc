@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using Sparc.Client.Diagnostics;
 
 namespace Sparc.Client;
@@ -7,10 +7,10 @@ namespace Sparc.Client;
 public sealed class ConsumerSessionOptions
 {
     /// <summary>Stop after this many messages; 0 means "until the producer stops".</summary>
-    public long Count { get; init; }
+    public long Count { get; set; }
 
     /// <summary>Expected type tag.</summary>
-    public int ExpectedType { get; init; } = 1;
+    public int ExpectedType { get; set; } = 1;
 
     /// <summary>
     /// When true (default), the payload carries the session's
@@ -20,10 +20,10 @@ public sealed class ConsumerSessionOptions
     /// (<c>ProducerSessionOptions.IncludeSessionHeader = false</c>); sequence,
     /// fill and latency checks are then skipped and the type tag is still checked.
     /// </summary>
-    public bool IncludeSessionHeader { get; init; } = true;
+    public bool IncludeSessionHeader { get; set; } = true;
 
     /// <summary>Validate sequence numbers and the message type.</summary>
-    public bool Verify { get; init; } = true;
+    public bool Verify { get; set; } = true;
 
     /// <summary>
     /// Scan every payload for the fill pattern. Only has an effect when
@@ -31,20 +31,20 @@ public sealed class ConsumerSessionOptions
     /// from the transfer cost (benchmarks, throughput tuning); sequence and
     /// type checks still run.
     /// </summary>
-    public bool VerifyPayload { get; init; } = true;
+    public bool VerifyPayload { get; set; } = true;
 
     /// <summary>Give up when no messages arrive for this long.</summary>
-    public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(5);
+    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Optional pause between consumed messages; <see cref="TimeSpan.Zero"/>
     /// disables pacing. Intended for tests/benchmarks that simulate a slow
     /// consumer (backpressure), not for production rate limiting.
     /// </summary>
-    public TimeSpan PerMessageDelay { get; init; }
+    public TimeSpan PerMessageDelay { get; set; }
 
     /// <summary>Claim the consumer role from a crashed peer.</summary>
-    public bool Takeover { get; init; }
+    public bool Takeover { get; set; }
 
     /// <summary>
     /// How to wait while the buffer stays empty. <see cref="SessionWaitMode.SpinOnly"/>
@@ -52,7 +52,7 @@ public sealed class ConsumerSessionOptions
     /// <see cref="SessionWaitMode.Notification"/> blocks on an OS signal and
     /// costs no CPU while idle.
     /// </summary>
-    public SessionWaitMode WaitMode { get; init; } = SessionWaitMode.SpinThenSleep;
+    public SessionWaitMode WaitMode { get; set; } = SessionWaitMode.SpinThenSleep;
 
     /// <summary>
     /// Notification latches; required when <see cref="WaitMode"/> is
@@ -60,7 +60,7 @@ public sealed class ConsumerSessionOptions
     /// given the same pair (same process) or a pair created from the same region
     /// name (<see cref="SessionNotification.CreateNamed"/>). The host owns it.
     /// </summary>
-    public SessionNotification? Notification { get; init; }
+    public SessionNotification? Notification { get; set; }
 }
 
 /// <summary>Progress notification emitted every ~10% of the requested count.</summary>

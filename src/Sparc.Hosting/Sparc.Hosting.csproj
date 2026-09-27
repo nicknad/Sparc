@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net11.0</TargetFrameworks>
+    <RootNamespace>Sparc.Hosting</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Description>Host integration for SPARC: one-line transport selection, a default channel, background services for sessions or custom producer/consumer workers, channel health checks and metrics.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sparc.Abstractions\Sparc.Abstractions.csproj" />
+    <ProjectReference Include="..\Sparc.Client\Sparc.Client.csproj" />
+    <ProjectReference Include="..\Sparc.Core\Sparc.Core.csproj" />
+    <ProjectReference Include="..\Sparc.UnixMemoryMapped\Sparc.UnixMemoryMapped.csproj" />
+    <ProjectReference Include="..\Sparc.WindowsMemoryMapped\Sparc.WindowsMemoryMapped.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+  </ItemGroup>
+
+</Project>

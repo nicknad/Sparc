@@ -13,12 +13,14 @@
 
   <ItemGroup>
     <PackageReference Include="xunit.v3" Version="4.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sparc.Core\Sparc.Core.csproj" />
     <ProjectReference Include="..\..\src\Sparc.Client\Sparc.Client.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Hosting\Sparc.Hosting.csproj" />
     <ProjectReference Include="..\..\src\Sparc.InMemory\Sparc.InMemory.csproj" />
     <ProjectReference Include="..\..\src\Sparc.UnixMemoryMapped\Sparc.UnixMemoryMapped.csproj" />
     <ProjectReference Include="..\..\src\Sparc.WindowsMemoryMapped\Sparc.WindowsMemoryMapped.csproj" />

@@ -49,6 +49,7 @@ in mind, and open an issue for anything that does not hold up.
 
 `docs/` goes deeper than this file:
 
+* [docs/hosting.md](docs/hosting.md) — DI, hosted session/worker services, health checks, metrics, configuration.
 * [docs/concept.md](docs/concept.md) — the problem, the core idea, guarantees, and how it compares to pipes/sockets/queues.
 * [docs/use-cases.md](docs/use-cases.md) — when to use it, sample patterns, anti-patterns, sizing.
 * [docs/how-it-works.md](docs/how-it-works.md) — handshake, layout, algorithm, memory ordering, lease API, sessions, wait modes, crash semantics, platforms, tests.
@@ -71,6 +72,7 @@ in mind, and open an issue for anything that does not hold up.
 │   ├── Sparc.WindowsMemoryMapped/    Windows named memory-mapped implementation + DI registration
 │   ├── Sparc.Core/            ring protocol: layout/framing, role-typed endpoints, SpscRingBuffer
 │   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
+│   ├── Sparc.Hosting/         AddSparcIpc/AddSparcChannel, hosted services, health check, metrics
 │   ├── Sparc.Producer/        producer CLI (args → session → summary → exit code)
 │   └── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
 ├── samples/
@@ -181,15 +183,48 @@ Reference the projects (or packages once published) you need:
 | `Sparc.WindowsMemoryMapped` | you run on Windows and want named memory-mapped regions (+ DI) |
 | `Sparc.Core` | you need the role-typed endpoints (`SparcRing`, `IProducerEndpoint`, `IConsumerEndpoint`) or the in-process `SpscRingBuffer` |
 | `Sparc.Client` | you need producer/consumer sessions and verification |
+| `Sparc.Hosting` | you want DI, hosted endpoints, health checks and metrics in one registration |
 
 ### Web app / worker service / generic host
 
+The `Sparc.Hosting` package registers the transport, the channel and the
+endpoint roles in a few lines. A producer process:
+
+```csharp
+using Sparc.Client;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddSparcIpc();                                // picks Windows/Unix transport
+builder.Services.AddSparcChannel(options => options.Name = "orders");
+builder.Services.AddSparcProducerSession(options =>
+{
+    options.Count = 1_000_000;
+    options.PayloadSize = 64;
+});
+```
+
+A consumer process swaps the last line for:
+
+```csharp
+builder.Services.AddSparcConsumerSession(options => options.Count = 0); // until the producer stops
+```
+
+`AddSparcProducerSession`/`AddSparcConsumerSession` host the session classes
+above. For full control over the loop, implement `ISparcProducerWorker`/
+`ISparcConsumerWorker` and register it with `AddSparcProducerWorker<T>()`/
+`AddSparcConsumerWorker<T>()`; either way the hosted service opens the endpoint,
+claims the role, runs the worker/session and disposes the endpoint on stop
+(which publishes the graceful stop to the peer). `AddSparcHealthChecks()`
+reports the peer states, and `SparcMetrics.Meter` carries session completion and
+failure counters. See [docs/hosting.md](docs/hosting.md).
+
 A runnable version of this pattern lives in `samples/Sparc.WebApp` (see below);
-the snippets show the shape of a production worker.
+the manual shape without `Sparc.Hosting` is:
 
 ```csharp
 using Sparc;
-using Sparc.WindowsMemoryMapped;
+using Sparc.WindowsMemoryMapped;   // or Sparc.UnixMemoryMapped
 using Sparc.Client;
 using Sparc.Core;
 
@@ -198,8 +233,6 @@ var builder = WebApplication.CreateBuilder(args);
 // Chooses the OS transport once. Web app code never sees MemoryMappedFile.
 builder.Services.AddWindowsNamedMemoryMappedIpc();   // Windows
 // builder.Services.AddUnixFileMemoryMappedIpc();     // Linux/macOS
-
-// e.g. builder.Services.AddHostedService<OrderProducerWorker>();
 ```
 
 ```csharp

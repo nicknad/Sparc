@@ -35,25 +35,25 @@ Sparc.Client.ConsumerSession.WaitForPeerAsync(System.TimeSpan timeout, System.Th
 Sparc.Client.ConsumerSessionOptions
 Sparc.Client.ConsumerSessionOptions.ConsumerSessionOptions() -> void
 Sparc.Client.ConsumerSessionOptions.Count.get -> long
-Sparc.Client.ConsumerSessionOptions.Count.init -> void
+Sparc.Client.ConsumerSessionOptions.Count.set -> void
 Sparc.Client.ConsumerSessionOptions.ExpectedType.get -> int
-Sparc.Client.ConsumerSessionOptions.ExpectedType.init -> void
+Sparc.Client.ConsumerSessionOptions.ExpectedType.set -> void
 Sparc.Client.ConsumerSessionOptions.IdleTimeout.get -> System.TimeSpan
-Sparc.Client.ConsumerSessionOptions.IdleTimeout.init -> void
+Sparc.Client.ConsumerSessionOptions.IdleTimeout.set -> void
 Sparc.Client.ConsumerSessionOptions.IncludeSessionHeader.get -> bool
-Sparc.Client.ConsumerSessionOptions.IncludeSessionHeader.init -> void
+Sparc.Client.ConsumerSessionOptions.IncludeSessionHeader.set -> void
 Sparc.Client.ConsumerSessionOptions.Notification.get -> Sparc.Client.SessionNotification?
-Sparc.Client.ConsumerSessionOptions.Notification.init -> void
+Sparc.Client.ConsumerSessionOptions.Notification.set -> void
 Sparc.Client.ConsumerSessionOptions.PerMessageDelay.get -> System.TimeSpan
-Sparc.Client.ConsumerSessionOptions.PerMessageDelay.init -> void
+Sparc.Client.ConsumerSessionOptions.PerMessageDelay.set -> void
 Sparc.Client.ConsumerSessionOptions.Takeover.get -> bool
-Sparc.Client.ConsumerSessionOptions.Takeover.init -> void
+Sparc.Client.ConsumerSessionOptions.Takeover.set -> void
 Sparc.Client.ConsumerSessionOptions.Verify.get -> bool
-Sparc.Client.ConsumerSessionOptions.Verify.init -> void
+Sparc.Client.ConsumerSessionOptions.Verify.set -> void
 Sparc.Client.ConsumerSessionOptions.VerifyPayload.get -> bool
-Sparc.Client.ConsumerSessionOptions.VerifyPayload.init -> void
+Sparc.Client.ConsumerSessionOptions.VerifyPayload.set -> void
 Sparc.Client.ConsumerSessionOptions.WaitMode.get -> Sparc.Client.SessionWaitMode
-Sparc.Client.ConsumerSessionOptions.WaitMode.init -> void
+Sparc.Client.ConsumerSessionOptions.WaitMode.set -> void
 Sparc.Client.Diagnostics.LatencyHistogram
 Sparc.Client.Diagnostics.LatencyHistogram.Count.get -> long
 Sparc.Client.Diagnostics.LatencyHistogram.LatencyHistogram() -> void
@@ -110,26 +110,26 @@ Sparc.Client.ProducerSession.RunAsync(System.Threading.CancellationToken cancell
 Sparc.Client.ProducerSession.WaitForPeerAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
 Sparc.Client.ProducerSessionOptions
 Sparc.Client.ProducerSessionOptions.Count.get -> long
-Sparc.Client.ProducerSessionOptions.Count.init -> void
+Sparc.Client.ProducerSessionOptions.Count.set -> void
 Sparc.Client.ProducerSessionOptions.FullTimeout.get -> System.TimeSpan
-Sparc.Client.ProducerSessionOptions.FullTimeout.init -> void
+Sparc.Client.ProducerSessionOptions.FullTimeout.set -> void
 Sparc.Client.ProducerSessionOptions.IncludeSessionHeader.get -> bool
-Sparc.Client.ProducerSessionOptions.IncludeSessionHeader.init -> void
+Sparc.Client.ProducerSessionOptions.IncludeSessionHeader.set -> void
 Sparc.Client.ProducerSessionOptions.MessageType.get -> int
-Sparc.Client.ProducerSessionOptions.MessageType.init -> void
+Sparc.Client.ProducerSessionOptions.MessageType.set -> void
 Sparc.Client.ProducerSessionOptions.Notification.get -> Sparc.Client.SessionNotification?
-Sparc.Client.ProducerSessionOptions.Notification.init -> void
+Sparc.Client.ProducerSessionOptions.Notification.set -> void
 Sparc.Client.ProducerSessionOptions.PayloadSize.get -> int
-Sparc.Client.ProducerSessionOptions.PayloadSize.init -> void
+Sparc.Client.ProducerSessionOptions.PayloadSize.set -> void
 Sparc.Client.ProducerSessionOptions.PayloadWriter.get -> Sparc.Client.SessionPayloadWriter?
-Sparc.Client.ProducerSessionOptions.PayloadWriter.init -> void
+Sparc.Client.ProducerSessionOptions.PayloadWriter.set -> void
 Sparc.Client.ProducerSessionOptions.PerMessageDelay.get -> System.TimeSpan
-Sparc.Client.ProducerSessionOptions.PerMessageDelay.init -> void
+Sparc.Client.ProducerSessionOptions.PerMessageDelay.set -> void
 Sparc.Client.ProducerSessionOptions.ProducerSessionOptions() -> void
 Sparc.Client.ProducerSessionOptions.Takeover.get -> bool
-Sparc.Client.ProducerSessionOptions.Takeover.init -> void
+Sparc.Client.ProducerSessionOptions.Takeover.set -> void
 Sparc.Client.ProducerSessionOptions.WaitMode.get -> Sparc.Client.SessionWaitMode
-Sparc.Client.ProducerSessionOptions.WaitMode.init -> void
+Sparc.Client.ProducerSessionOptions.WaitMode.set -> void
 Sparc.Client.RingBufferMessage
 Sparc.Client.SessionNotification
 Sparc.Client.SessionNotification.Data.get -> Sparc.Client.ISessionSignal!

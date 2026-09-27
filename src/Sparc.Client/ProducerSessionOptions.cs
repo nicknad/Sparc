@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using Sparc.Core;
 
 namespace Sparc.Client;
@@ -7,13 +7,13 @@ namespace Sparc.Client;
 public sealed class ProducerSessionOptions
 {
     /// <summary>Messages to write; 0 means "until cancelled or the peer stops".</summary>
-    public long Count { get; init; } = 1_000_000;
+    public long Count { get; set; } = 1_000_000;
 
     /// <summary>Payload bytes per message, including the 16-byte protocol header.</summary>
-    public int PayloadSize { get; init; } = 64;
+    public int PayloadSize { get; set; } = 64;
 
     /// <summary>Type tag stored in each slot.</summary>
-    public int MessageType { get; init; } = 1;
+    public int MessageType { get; set; } = 1;
 
     /// <summary>
     /// When true (default), the session stamps every payload with its
@@ -22,7 +22,7 @@ public sealed class ProducerSessionOptions
     /// whole payload through <see cref="PayloadWriter"/>; the consumer must then
     /// also be configured with <c>IncludeSessionHeader = false</c>.
     /// </summary>
-    public bool IncludeSessionHeader { get; init; } = true;
+    public bool IncludeSessionHeader { get; set; } = true;
 
     /// <summary>
     /// Optional payload writer, called once per message with the full payload
@@ -30,26 +30,26 @@ public sealed class ProducerSessionOptions
     /// already written and the writer fills the remainder; when false the writer
     /// owns the whole span (and the payload is zero-filled when no writer is set).
     /// </summary>
-    public SessionPayloadWriter? PayloadWriter { get; init; }
+    public SessionPayloadWriter? PayloadWriter { get; set; }
 
     /// <summary>Abort when the buffer stays full this long (the consumer may be gone).</summary>
-    public TimeSpan FullTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    public TimeSpan FullTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Optional pause between published messages; <see cref="TimeSpan.Zero"/>
     /// disables pacing. Intended for tests/benchmarks that simulate a slow
     /// producer; production pacing belongs in the caller's own scheduling.
     /// </summary>
-    public TimeSpan PerMessageDelay { get; init; }
+    public TimeSpan PerMessageDelay { get; set; }
 
     /// <summary>Claim the producer role from a crashed peer.</summary>
-    public bool Takeover { get; init; }
+    public bool Takeover { get; set; }
 
     /// <summary>
     /// How to wait while the buffer stays full. <see cref="SessionWaitMode.SpinOnly"/>
     /// removes the millisecond sleep granularity at the cost of a busy core.
     /// </summary>
-    public SessionWaitMode WaitMode { get; init; } = SessionWaitMode.SpinThenSleep;
+    public SessionWaitMode WaitMode { get; set; } = SessionWaitMode.SpinThenSleep;
 
     /// <summary>
     /// Notification latches; required when <see cref="WaitMode"/> is
@@ -57,7 +57,7 @@ public sealed class ProducerSessionOptions
     /// given the same pair (same process) or a pair created from the same region
     /// name (<see cref="SessionNotification.CreateNamed"/>). The host owns it.
     /// </summary>
-    public SessionNotification? Notification { get; init; }
+    public SessionNotification? Notification { get; set; }
 
     internal static void Validate(long count, int payloadSize, TimeSpan perMessageDelay, int maxPayloadSize)
     {

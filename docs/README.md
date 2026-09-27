@@ -11,6 +11,7 @@ This folder goes deeper than the top-level `README.md`:
 |---|---|
 | [concept.md](concept.md) | The problem, the core idea, what the transport guarantees and what it does not, and how it compares to pipes/sockets/queues. |
 | [use-cases.md](use-cases.md) | Where an SPSC shared-memory ring is the right tool, where it is not, and sizing guidance. |
+| [hosting.md](hosting.md) | `Sparc.Hosting`: DI registration, hosted session/worker services, health checks, metrics, configuration, testing. |
 | [how-it-works.md](how-it-works.md) | The full mechanism: region handshake, binary layout, ring algorithm, memory ordering, lease API, sessions, wait modes, crash semantics, platform implementations, tests. |
 | [performance-invariants.md](performance-invariants.md) | Every invariant that makes the measured performance possible, grouped by kind, each with its mechanism, where it lives in code, what it buys, and what breaks if violated. |
 | [benchmarking.md](benchmarking.md) | The benchmark harnesses, how to run them, measurement traps, current numbers, and the regression check. |
@@ -28,6 +29,7 @@ Suggested reading order for a newcomer: `concept.md` -> `use-cases.md` ->
 | Pinned-array transport for tests/dev | `src/Sparc.InMemory` |
 | Ring protocol and buffers | `src/Sparc.Core` |
 | Producer/consumer sessions, latency histogram | `src/Sparc.Client` |
+| Host integration: DI, hosted services, health, metrics | `src/Sparc.Hosting` |
 | Producer/consumer CLIs | `src/Sparc.Producer`, `src/Sparc.Consumer` |
 | Hosts | `samples/Sparc.WebApp`, `samples/yarp/*` |
 | Verification | `tests/Sparc.UnitTests`, `tests/Sparc.ConcurrencyTests`, `tests/Sparc.ProcessTests` |

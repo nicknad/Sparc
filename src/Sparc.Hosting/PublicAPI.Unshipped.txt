@@ -1,0 +1,74 @@
+#nullable enable
+const Sparc.Hosting.SparcMetrics.MeterName = "Sparc" -> string!
+Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions
+Sparc.Hosting.ISparcConsumerWorker
+Sparc.Hosting.ISparcConsumerWorker.RunAsync(Sparc.Core.IConsumerEndpoint! consumer, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+Sparc.Hosting.ISparcProducerWorker
+Sparc.Hosting.ISparcProducerWorker.RunAsync(Sparc.Core.IProducerEndpoint! producer, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+Sparc.Hosting.SparcChannelHealthCheck
+Sparc.Hosting.SparcChannelHealthCheck.CheckHealthAsync(Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext! context, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult>!
+Sparc.Hosting.SparcChannelHealthCheck.SparcChannelHealthCheck(Sparc.Hosting.SparcChannelStatus! status, Sparc.Hosting.SparcHealthOptions! options) -> void
+Sparc.Hosting.SparcChannelOptions
+Sparc.Hosting.SparcChannelOptions.AdoptExistingGeometry.get -> bool
+Sparc.Hosting.SparcChannelOptions.AdoptExistingGeometry.set -> void
+Sparc.Hosting.SparcChannelOptions.Capacity.get -> int
+Sparc.Hosting.SparcChannelOptions.Capacity.set -> void
+Sparc.Hosting.SparcChannelOptions.Name.get -> string!
+Sparc.Hosting.SparcChannelOptions.Name.set -> void
+Sparc.Hosting.SparcChannelOptions.OpenTimeout.get -> System.TimeSpan
+Sparc.Hosting.SparcChannelOptions.OpenTimeout.set -> void
+Sparc.Hosting.SparcChannelOptions.RecreateIfStale.get -> bool
+Sparc.Hosting.SparcChannelOptions.RecreateIfStale.set -> void
+Sparc.Hosting.SparcChannelOptions.RequireExisting.get -> bool
+Sparc.Hosting.SparcChannelOptions.RequireExisting.set -> void
+Sparc.Hosting.SparcChannelOptions.SlotSize.get -> int
+Sparc.Hosting.SparcChannelOptions.SlotSize.set -> void
+Sparc.Hosting.SparcChannelOptions.SparcChannelOptions() -> void
+Sparc.Hosting.SparcChannelOptions.Takeover.get -> bool
+Sparc.Hosting.SparcChannelOptions.Takeover.set -> void
+Sparc.Hosting.SparcChannelOptions.Validate() -> void
+Sparc.Hosting.SparcChannelStatus
+Sparc.Hosting.SparcChannelStatus.ConsumerResult.get -> Sparc.Client.ConsumerRunResult?
+Sparc.Hosting.SparcChannelStatus.ConsumerState.get -> Sparc.Core.RingBufferEndpointState
+Sparc.Hosting.SparcChannelStatus.FailureMessage.get -> string?
+Sparc.Hosting.SparcChannelStatus.Name.get -> string!
+Sparc.Hosting.SparcChannelStatus.ProducerResult.get -> Sparc.Client.ProducerRunResult?
+Sparc.Hosting.SparcChannelStatus.ProducerState.get -> Sparc.Core.RingBufferEndpointState
+Sparc.Hosting.SparcChannelStatus.SparcChannelStatus(string! name) -> void
+Sparc.Hosting.SparcConsumerSessionService
+Sparc.Hosting.SparcConsumerSessionService.Completion.get -> System.Threading.Tasks.Task!
+Sparc.Hosting.SparcConsumerSessionService.Result.get -> Sparc.Client.ConsumerRunResult?
+Sparc.Hosting.SparcConsumerSessionService.SparcConsumerSessionService(Sparc.IIpcMemoryRegionFactory! factory, Sparc.Hosting.SparcChannelOptions! channel, Sparc.Client.ConsumerSessionOptions! session, Sparc.Hosting.SparcChannelStatus! status, System.TimeProvider! timeProvider, Microsoft.Extensions.Logging.ILogger<Sparc.Hosting.SparcConsumerSessionService!>! logger) -> void
+Sparc.Hosting.SparcConsumerWorkerService<TWorker>
+Sparc.Hosting.SparcConsumerWorkerService<TWorker>.Completion.get -> System.Threading.Tasks.Task!
+Sparc.Hosting.SparcConsumerWorkerService<TWorker>.SparcConsumerWorkerService(TWorker! worker, Sparc.IIpcMemoryRegionFactory! factory, Sparc.Hosting.SparcChannelOptions! channel, Sparc.Hosting.SparcChannelStatus! status, System.TimeProvider! timeProvider, Microsoft.Extensions.Logging.ILogger<Sparc.Hosting.SparcConsumerWorkerService<TWorker!>!>! logger) -> void
+Sparc.Hosting.SparcHealthOptions
+Sparc.Hosting.SparcHealthOptions.RequireConsumer.get -> bool
+Sparc.Hosting.SparcHealthOptions.RequireConsumer.set -> void
+Sparc.Hosting.SparcHealthOptions.RequireProducer.get -> bool
+Sparc.Hosting.SparcHealthOptions.RequireProducer.set -> void
+Sparc.Hosting.SparcHealthOptions.SparcHealthOptions() -> void
+Sparc.Hosting.SparcIpcOptions
+Sparc.Hosting.SparcIpcOptions.SparcIpcOptions() -> void
+Sparc.Hosting.SparcIpcOptions.UnixDirectory.get -> string?
+Sparc.Hosting.SparcIpcOptions.UnixDirectory.set -> void
+Sparc.Hosting.SparcMetrics
+Sparc.Hosting.SparcProducerSessionService
+Sparc.Hosting.SparcProducerSessionService.Completion.get -> System.Threading.Tasks.Task!
+Sparc.Hosting.SparcProducerSessionService.Result.get -> Sparc.Client.ProducerRunResult?
+Sparc.Hosting.SparcProducerSessionService.SparcProducerSessionService(Sparc.IIpcMemoryRegionFactory! factory, Sparc.Hosting.SparcChannelOptions! channel, Sparc.Client.ProducerSessionOptions! session, Sparc.Hosting.SparcChannelStatus! status, System.TimeProvider! timeProvider, Microsoft.Extensions.Logging.ILogger<Sparc.Hosting.SparcProducerSessionService!>! logger) -> void
+Sparc.Hosting.SparcProducerWorkerService<TWorker>
+Sparc.Hosting.SparcProducerWorkerService<TWorker>.Completion.get -> System.Threading.Tasks.Task!
+Sparc.Hosting.SparcProducerWorkerService<TWorker>.SparcProducerWorkerService(TWorker! worker, Sparc.IIpcMemoryRegionFactory! factory, Sparc.Hosting.SparcChannelOptions! channel, Sparc.Hosting.SparcChannelStatus! status, System.TimeProvider! timeProvider, Microsoft.Extensions.Logging.ILogger<Sparc.Hosting.SparcProducerWorkerService<TWorker!>!>! logger) -> void
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcChannel(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Microsoft.Extensions.Configuration.IConfigurationSection! section) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcChannel(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcChannel(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Sparc.Hosting.SparcChannelOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcConsumerSession(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Sparc.Client.ConsumerSessionOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcConsumerWorker<TWorker>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcHealthChecks(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Sparc.Hosting.SparcHealthOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcIpc(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcIpc(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Sparc.Hosting.SparcIpcOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcIpc(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Func<System.IServiceProvider!, Sparc.IIpcMemoryRegionFactory!>! factoryFactory) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcProducerSession(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Sparc.Client.ProducerSessionOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Microsoft.Extensions.DependencyInjection.SparcServiceCollectionExtensions.AddSparcProducerWorker<TWorker>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Sparc.Hosting.SparcMetrics.Meter.get -> System.Diagnostics.Metrics.Meter!
