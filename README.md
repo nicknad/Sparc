@@ -105,7 +105,7 @@ Example output:
 
 ```
 ready: role=consumer name=demo capacity=1024 slotSize=256 maxPayload=248
-consumed=1000000 bytes=64000000 elapsed=0.61s throughput=1639344 msg/s dataThroughput=100.0 MiB/s
+consumed=1000000 bytes=64000000 elapsed=0.61s throughput=1639344 msg/s dataThroughput=100.0 MiB/s wallElapsed=0.65s
 producer=Stopped consumer=Running
 latency(us): min=1.20 mean=122.44 p50=51.20 p90=102.40 p95=204.80 p99=409.60 p99.9=2048.00 max=20480.00 (n=1000000)
 ```
@@ -555,27 +555,41 @@ types; that allocation is part of their design and shows up in the `Alloc/op` co
 
 ### Producer → Consumer (cross-process) latency and throughput
 
-500,000 messages per size, three runs each; medians, throughput spread is min–max across
-runs. `Message` is the payload size (slot size follows it), latencies in microseconds:
+500,000 messages per size, three runs each, interleaved size by size (a full block per
+size biases the last size on a shared VM); medians, throughput spread is min–max across
+runs. `Message` is the payload size; the slot size is derived (rounded to a cache line) and
+the region footprint is reported because it determines cache residency. Latencies in
+microseconds:
 
-| Message | Throughput | Spread | Data | p50 | p90 | p95 | p99 | p99.9 | max | Alloc/msg |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 16 B | 2.86M msg/s | 1.55M–3.05M | 43.6 MiB/s | 192.00 | 230.40 | 345.60 | 563.20 | 314572.80 | 327598.90 | 0 |
-| 64 B | 1.54M msg/s | 1.49M–1.58M | 93.9 MiB/s | 108.80 | 332.80 | 537.60 | 15564.80 | 340787.20 | 347766.60 | 0 |
-| 256 B | 1.60M msg/s | 1.46M–2.12M | 391.2 MiB/s | 160.00 | 460.80 | 588.80 | 15564.80 | 340787.20 | 343279.80 | 0 |
-| 1 KB | 1.83M msg/s | 1.57M–2.07M | 1,782.3 MiB/s | 179.20 | 217.60 | 486.40 | 14745.60 | 367001.60 | 369654.90 | 0 |
-| 4 KB | 1.56M msg/s | 1.25M–1.73M | 6,090.2 MiB/s | 268.80 | 396.80 | 614.40 | 15564.80 | 353894.40 | 356295.50 | 0 |
-| 16 KB | 139,980 msg/s | 111,194–193,989 | 2,187.2 MiB/s | 2252.80 | 15564.80 | 15564.80 | 16384.00 | 353894.40 | 362477.10 | 0 |
+| Message | Region | Throughput | Spread | Data | p50 | p90 | p95 | p99 | p99.9 | max | CPU prod/cons |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 16 B | 0.3 MiB | 1.20M msg/s | 712,250–1.34M | 18.3 MiB/s | 86.40 | 256.00 | 614.40 | 15564.80 | 353894.40 | 357103.60 | 6/13 % |
+| 64 B | 0.3 MiB | 1.86M msg/s | 1.05M–1.88M | 113.2 MiB/s | 147.20 | 320.00 | 512.00 | 9830.40 | 314572.80 | 322671.20 | 9/11 % |
+| 256 B | 0.3 MiB | 1.30M msg/s | 1.23M–1.64M | 316.6 MiB/s | 230.40 | 345.60 | 486.40 | 14745.60 | 340787.20 | 352744.10 | 9/20 % |
+| 1 KB | 1.1 MiB | 1.69M msg/s | 1.64M–2.17M | 1,646.8 MiB/s | 230.40 | 435.20 | 716.80 | 9420.80 | 353894.40 | 367094.00 | 12/29 % |
+| 4 KB | 4.1 MiB | 1.92M msg/s | 1.79M–2.04M | 7,508.9 MiB/s | 115.20 | 537.60 | 819.20 | 4710.40 | 340787.20 | 349837.30 | 18/45 % |
+| 16 KB | 16.1 MiB | 280,291 msg/s | 186,319–285,317 | 4,379.6 MiB/s | 1331.20 | 4300.80 | 12288.00 | 15564.80 | 353894.40 | 359796.80 | 11/28 % |
 
-* Throughput is the **consumer's** rate end to end. The producer process starts first and
-  its own elapsed time includes waiting for the consumer to attach, so its reported rate
-  (~0.7–1.0M msg/s at small sizes) understates the send rate; the consumer number is the
-  meaningful one. Each endpoint burns 1–40 % of one core depending on size.
+* Throughput is the **consumer's** rate end to end. The producer reports its own
+  `activeElapsed` window (first publish to end), so its rate no longer includes waiting for
+  the consumer to attach. Each endpoint burns 6–45 % of one core depending on size.
+* **Why 16 KB falls off (and why the old table said 140k).** Changing `--size` at a fixed
+  capacity also changes the region footprint (`192 + capacity × slotSize`): 4 KB → 4 MiB,
+  16 KB → 16 MiB. Measured with the fixed-footprint variant of the sweep, the data rate is
+  flat across 4/8/16 KB (~5.3 GiB/s), i.e. the cost per byte is linear. Once the ring
+  exceeds the CPU caches, every slot line is written and fetched through DRAM with
+  write-allocate (~1.8×), and the payload verification scan is another full pass (~1.8×
+  when enabled). The two losses stack, which is what made the 16 KB row look like a cliff.
+  Scale the footprint with `--capacity`, drop the scan with `--no-verify-payload`, and use
+  the printed `Region` column to compare like with like.
 * `Alloc/msg` is 0 B after setup: BDN's `MemoryDiagnoser` shows 0 B/op for both SPSC
   transports, and the concurrency test asserts 10M writes+reads allocate < 4 KiB in total.
+  The sessions are zero-copy now (see the lease API), so the consumer no longer allocates a
+  `MaxPayloadSize` destination buffer.
 * p99.9/max (~0.3 s) are host VM scheduling stalls that recur in every capture on this
   machine, not ring behavior. p99 ≈ 15.6 ms is the Windows timer tick that `SpinWait`
-  falls back to when the consumer catches up and the buffer goes empty.
+  falls back to when the consumer catches up and the buffer goes empty; `--spin-only`
+  removes it.
 * Latencies come from a 16-sub-bucket log histogram, so percentiles are approximate by at
   most 1/16 of the value.
 
