@@ -78,14 +78,14 @@ public sealed class RingBufferRegion : IDisposable
     /// <summary>A managed snapshot of the header taken when the region was opened.</summary>
     public RingBufferHeader Header { get; }
 
-    /// <summary>Raw pointer to the first byte of the region.</summary>
-    public unsafe byte* Pointer => _region.Pointer;
+    /// <summary>Raw pointer to the first byte of the region. Protocol-level; internal by design.</summary>
+    internal unsafe byte* Pointer => _region.Pointer;
 
     /// <summary>Producer-owned write cursor. Access with atomics.</summary>
-    public unsafe ref long TailRef => ref Unsafe.AsRef<long>(_region.Pointer + RingBufferLayout.TailOffset);
+    internal unsafe ref long TailRef => ref Unsafe.AsRef<long>(_region.Pointer + RingBufferLayout.TailOffset);
 
     /// <summary>Consumer-owned read cursor. Access with atomics.</summary>
-    public unsafe ref long HeadRef => ref Unsafe.AsRef<long>(_region.Pointer + RingBufferLayout.HeadOffset);
+    internal unsafe ref long HeadRef => ref Unsafe.AsRef<long>(_region.Pointer + RingBufferLayout.HeadOffset);
 
     /// <summary>
     /// Creates the region if needed, otherwise opens and validates the existing

@@ -16,13 +16,13 @@ public sealed class ConsumerSession
     private const int ProgressReports = 10;
     private const long CancellationCheckMask = 0xFFFF;
 
-    private readonly SharedRingBuffer _buffer;
+    private readonly IRingBufferEndpoint _buffer;
     private readonly ConsumerSessionOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger _logger;
 
     public ConsumerSession(
-        SharedRingBuffer buffer,
+        IRingBufferEndpoint buffer,
         ConsumerSessionOptions options,
         TimeProvider? timeProvider = null,
         ILogger? logger = null)

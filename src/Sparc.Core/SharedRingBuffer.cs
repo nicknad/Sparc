@@ -25,7 +25,7 @@ namespace Sparc.Core;
 /// mapped region while the buffer is in use.
 /// </para>
 /// </remarks>
-public sealed class SharedRingBuffer : IRingBuffer, IDisposable
+public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
 {
     private readonly RingBufferRegion _region;
     private readonly bool _ownsRegion;
@@ -132,8 +132,8 @@ public sealed class SharedRingBuffer : IRingBuffer, IDisposable
     /// <summary>Advisory state reported by the consumer.</summary>
     public RingBufferEndpointState ConsumerState => _region.ReadEndpointState(RingBufferEndpointRole.Consumer);
 
-    /// <summary>The underlying protocol region.</summary>
-    public RingBufferRegion Region => _region;
+    /// <summary>The underlying protocol region. Protocol-level; not part of the public surface.</summary>
+    internal RingBufferRegion Region => _region;
 
     /// <summary>
     /// Claims the given role. Throws <see cref="RingBufferRoleConflictException"/>

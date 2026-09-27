@@ -9,6 +9,13 @@ namespace Sparc.Core;
 /// array (Phase 1/2 of the project).
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>Parity with <see cref="SharedRingBuffer"/>.</b> The two buffers implement
+/// the same algorithm with deliberately duplicated hot paths: a shared
+/// abstraction over array vs unmanaged storage would sit on every message.
+/// Keep changes in sync; <c>SpscRingBufferTests</c> and
+/// <c>SharedRingBufferTests</c> cover the same scenarios for both types.
+/// </para>
 /// <para><b>Slot layout:</b> <c>[int32 length][int32 type][payload...]</c>.</para>
 /// <para>
 /// <b>Algorithm.</b> <c>tail</c> (next write sequence) is owned by the producer,

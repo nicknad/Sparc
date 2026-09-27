@@ -15,13 +15,13 @@ public sealed class ProducerSession
     private const int ProgressReports = 10;
     private const long CancellationCheckMask = 0xFFFF;
 
-    private readonly SharedRingBuffer _buffer;
+    private readonly IRingBufferEndpoint _buffer;
     private readonly ProducerSessionOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger _logger;
 
     public ProducerSession(
-        SharedRingBuffer buffer,
+        IRingBufferEndpoint buffer,
         ProducerSessionOptions options,
         TimeProvider? timeProvider = null,
         ILogger? logger = null)
