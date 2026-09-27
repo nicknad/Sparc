@@ -521,8 +521,13 @@ check exit codes and message counts, not wall-clock timing.
 ## 6. Benchmarks
 
 ```powershell
-# throughput matrix (BenchmarkDotNet; 6 transports × 5 message sizes)
+# throughput matrix (BenchmarkDotNet; 8 transports × 5 message sizes)
 dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --filter *
+
+# in-process regression check against benchmarks/Sparc.Benchmarks/perf-baseline.json
+# (capture once per machine with --save-baseline; exits 1 when a scenario is below tolerance)
+dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --regression
+dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --regression --save-baseline
 
 # one-way latency percentiles, all transports in-process
 dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --latency --transport all --count 200000 --size 64

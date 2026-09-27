@@ -1,0 +1,46 @@
+{
+  "machine": "Microsoft Windows 10.0.22621 / 16 cores",
+  "capturedUtc": "2026-09-27T03:01:39.4419842+00:00",
+  "scenarios": {
+    "array-copy-64": {
+      "messagesPerSecond": 6049637.883800371,
+      "nanosecondsPerMessage": 165.29915000000003,
+      "mebibytesPerSecond": 369.24059349367496
+    },
+    "array-lease-64": {
+      "messagesPerSecond": 3044706.3365514865,
+      "nanosecondsPerMessage": 328.4389,
+      "mebibytesPerSecond": 185.83412698678507
+    },
+    "shared-copy-64": {
+      "messagesPerSecond": 12995417.815678192,
+      "nanosecondsPerMessage": 76.9502,
+      "mebibytesPerSecond": 793.1773569139522
+    },
+    "shared-lease-64": {
+      "messagesPerSecond": 19445813.75382961,
+      "nanosecondsPerMessage": 51.424949999999995,
+      "mebibytesPerSecond": 1186.8782808733893
+    },
+    "shared-copy-4k": {
+      "messagesPerSecond": 6898626.069631971,
+      "nanosecondsPerMessage": 144.9564,
+      "mebibytesPerSecond": 26947.75808449989
+    },
+    "shared-lease-4k": {
+      "messagesPerSecond": 4885546.306673558,
+      "nanosecondsPerMessage": 204.6854,
+      "mebibytesPerSecond": 19084.165260443588
+    },
+    "shared-copy-16k": {
+      "messagesPerSecond": 354278.18064455484,
+      "nanosecondsPerMessage": 2822.6406666666667,
+      "mebibytesPerSecond": 5535.596572571169
+    },
+    "shared-lease-16k": {
+      "messagesPerSecond": 329584.4204126133,
+      "nanosecondsPerMessage": 3034.124,
+      "mebibytesPerSecond": 5149.756568947083
+    }
+  }
+}

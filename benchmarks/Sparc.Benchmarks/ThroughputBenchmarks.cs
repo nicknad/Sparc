@@ -40,6 +40,20 @@ public class SpscSharedMemoryBenchmarks : ThroughputBenchmarkBase
 
 [MemoryDiagnoser]
 [SimpleJob(warmupCount: 1, iterationCount: 3)]
+public class SpscArrayLeaseBenchmarks : ThroughputBenchmarkBase
+{
+    protected override TwoThreadPump CreatePump() => new SpscLeasePump(MessageSize);
+}
+
+[MemoryDiagnoser]
+[SimpleJob(warmupCount: 1, iterationCount: 3)]
+public class SpscSharedMemoryLeaseBenchmarks : ThroughputBenchmarkBase
+{
+    protected override TwoThreadPump CreatePump() => SpscSharedMemoryPump.CreateLease(MessageSize);
+}
+
+[MemoryDiagnoser]
+[SimpleJob(warmupCount: 1, iterationCount: 3)]
 public class LockQueueBenchmarks : ThroughputBenchmarkBase
 {
     protected override TwoThreadPump CreatePump() => new LockQueuePump();
