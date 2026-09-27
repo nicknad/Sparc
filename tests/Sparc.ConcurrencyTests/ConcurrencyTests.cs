@@ -71,6 +71,11 @@ public class SharedRingBufferConcurrencyTests(ITestOutputHelper output)
     [Fact]
     public void TenMillionMessagesArriveInOrderAcrossTwoMappings()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // named memory-mapped files are Windows-only
+        }
+
         string name = "spsc-concurrency-" + Guid.NewGuid().ToString("N");
         WindowsNamedMemoryMappedRegionFactory factory = new();
 

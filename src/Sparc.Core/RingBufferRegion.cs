@@ -137,7 +137,9 @@ public sealed class RingBufferRegion : IDisposable
             catch (RingBufferCorruptedException) when (options.RecreateIfStale && !recreateAttempted)
             {
                 // Drop our handle, let the factory reclaim any backing store,
-                // then create from scratch on the next iteration.
+                // then create from scratch on the next iteration. A false
+                // result is expected on Windows (nothing to remove), so the
+                // retry below is the actual recovery step.
                 region.Dispose();
                 recreateAttempted = true;
                 factory.TryReset(name);

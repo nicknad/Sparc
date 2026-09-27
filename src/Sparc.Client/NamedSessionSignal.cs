@@ -20,6 +20,8 @@ namespace Sparc.Client;
 /// </remarks>
 public sealed class NamedSessionSignal : ISessionSignal
 {
+    private const int CancellationPollMilliseconds = 10;
+
     private readonly Semaphore _semaphore;
     private int _disposed;
 
@@ -57,13 +59,28 @@ public sealed class NamedSessionSignal : ISessionSignal
     public bool Wait(TimeSpan timeout, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
+        long deadline = timeout == Timeout.InfiniteTimeSpan
+            ? long.MaxValue
+            : Environment.TickCount64 + (long)timeout.TotalMilliseconds;
 
-        int index = WaitHandle.WaitAny([_semaphore, cancellationToken.WaitHandle], timeout);
-        return index == 0;
+        while (true)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            long remaining = deadline - Environment.TickCount64;
+            if (remaining <= 0)
+            {
+                return false;
+            }
+
+            if (_semaphore.WaitOne((int)Math.Min(remaining, CancellationPollMilliseconds)))
+            {
+                return true;
+            }
+        }
     }
 
     public void Dispose()

@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Sparc;
 
 namespace Sparc.Core;
@@ -27,6 +28,9 @@ namespace Sparc.Core;
 /// </remarks>
 public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
 {
+    private const int WriteTimeoutSeconds = 30;
+    private const int MaxRoleClaimAttempts = 1 << 20;
+
     private readonly RingBufferRegion _region;
     private readonly bool _ownsRegion;
     private readonly int _mask;
@@ -45,6 +49,7 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
     // State for the zero-copy lease API. The producer and consumer contracts are
     // single-threaded, so per-instance pending state is safe.
     private long _pendingTail;
+    private int _pendingOffset;
     private int _pendingLength;
     private int _pendingType;
     private bool _hasPendingWrite;
@@ -124,7 +129,17 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
     public bool IsEmpty => HeadSequence == TailSequence;
 
     /// <inheritdoc />
-    public int Count => (int)(TailSequence - HeadSequence);
+    public int Count
+    {
+        get
+        {
+            // Read head before tail: head is monotonic and never exceeds tail, so
+            // this order can never produce a transient negative count.
+            long head = Volatile.Read(ref _region.HeadRef);
+            long tail = Volatile.Read(ref _region.TailRef);
+            return (int)(tail - head);
+        }
+    }
 
     /// <summary>Advisory state reported by the producer.</summary>
     public RingBufferEndpointState ProducerState => _region.ReadEndpointState(RingBufferEndpointRole.Producer);
@@ -150,7 +165,7 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
     {
         ThrowIfDisposed();
 
-        while (true)
+        for (int attempt = 0; attempt < MaxRoleClaimAttempts; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             RingBufferEndpointState current = _region.ReadEndpointState(role);
@@ -172,6 +187,10 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
                 return;
             }
         }
+
+        throw new RingBufferRoleConflictException(
+            $"Could not claim the {role} role in region '{Name}' after {MaxRoleClaimAttempts} attempts; " +
+            "another process keeps changing the endpoint state.");
     }
 
     /// <inheritdoc />
@@ -186,32 +205,10 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
                 $"Payload of {payload.Length} bytes exceeds the maximum of {MaxPayloadSize} bytes.");
         }
 
-        // Producer-owned cursor: this process is the only writer.
-        long tail = Volatile.Read(ref _region.TailRef);
-
-        // Acquire (only when the cached peer cursor claims the buffer is full):
-        // observes the consumer's release of head, so the slot we are about to
-        // overwrite is guaranteed to be fully consumed.
-        long head = _cachedHead;
-        if (tail - head >= Capacity)
+        if (!TryAcquireWriteSlot(out long tail, out int offset))
         {
-            head = Volatile.Read(ref _region.HeadRef);
-            _cachedHead = head;
-            if (tail - head >= Capacity)
-            {
-                return false; // full
-            }
+            return false; // full
         }
-
-        // Invariants: cursors are monotonic, the cached peer cursor is never
-        // ahead of the real one, and the target slot is inside the region.
-        Debug.Assert(tail >= head);
-        Debug.Assert(tail - head < Capacity);
-        Debug.Assert(_cachedHead <= Volatile.Read(ref _region.HeadRef));
-        int offset = (int)(tail & _mask) * SlotSize;
-        Debug.Assert((uint)(tail & _mask) < (uint)Capacity);
-        Debug.Assert(offset >= 0);
-        Debug.Assert((long)offset + SlotSize <= _region.Size - RingBufferLayout.HeaderSize);
 
         unsafe
         {
@@ -235,32 +232,12 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
                 $"Destination must be at least {MaxPayloadSize} bytes (MaxPayloadSize).", nameof(destination));
         }
 
-        // Consumer-owned cursor.
-        long head = Volatile.Read(ref _region.HeadRef);
-
-        // Acquire (only when the cached peer cursor claims the buffer is empty):
-        // observes the producer's release of the slot contents.
-        long tail = _cachedTail;
-        if (tail == head)
+        if (!TryAcquireReadSlot(out long head, out int offset))
         {
-            tail = Volatile.Read(ref _region.TailRef);
-            _cachedTail = tail;
-            if (tail == head)
-            {
-                bytesRead = 0;
-                type = 0;
-                return false; // empty
-            }
+            bytesRead = 0;
+            type = 0;
+            return false; // empty
         }
-
-        // Invariants: data is available, the cached peer cursor is never ahead
-        // of the real one, and the source slot is inside the region.
-        Debug.Assert(tail > head);
-        Debug.Assert(_cachedTail <= Volatile.Read(ref _region.TailRef));
-        int offset = (int)(head & _mask) * SlotSize;
-        Debug.Assert((uint)(head & _mask) < (uint)Capacity);
-        Debug.Assert(offset >= 0);
-        Debug.Assert((long)offset + SlotSize <= _region.Size - RingBufferLayout.HeaderSize);
 
         unsafe
         {
@@ -290,30 +267,18 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
                 $"Payload of {length} bytes exceeds the maximum of {MaxPayloadSize} bytes.");
         }
 
-        long tail = Volatile.Read(ref _region.TailRef);
-        long head = _cachedHead;
-        if (tail - head >= Capacity)
+        if (!TryAcquireWriteSlot(out long tail, out int offset))
         {
-            head = Volatile.Read(ref _region.HeadRef);
-            _cachedHead = head;
-            if (tail - head >= Capacity)
-            {
-                payload = default;
-                return false; // full
-            }
+            payload = default;
+            return false; // full
         }
-
-        Debug.Assert(tail >= head);
-        Debug.Assert(tail - head < Capacity);
-        int offset = (int)(tail & _mask) * SlotSize;
-        Debug.Assert(offset >= 0);
-        Debug.Assert((long)offset + SlotSize <= _region.Size - RingBufferLayout.HeaderSize);
 
         unsafe
         {
             payload = new Span<byte>(_slots + offset + RingBufferLayout.MessageHeaderSize, length);
         }
 
+        _pendingOffset = offset;
         _pendingTail = tail;
         _pendingLength = length;
         _pendingType = type;
@@ -332,10 +297,10 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
         }
 
         _hasPendingWrite = false;
-        int offset = (int)(_pendingTail & _mask) * SlotSize;
+        Debug.Assert((long)_pendingOffset + SlotSize <= _region.Size - RingBufferLayout.HeaderSize);
         unsafe
         {
-            Span<byte> slot = new(_slots + offset, SlotSize);
+            Span<byte> slot = new(_slots + _pendingOffset, SlotSize);
             BinaryPrimitives.WriteInt32LittleEndian(slot, _pendingLength);
             BinaryPrimitives.WriteInt32LittleEndian(slot[sizeof(int)..], _pendingType);
         }
@@ -355,6 +320,7 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
             throw new InvalidOperationException("No write reservation is active.");
         }
 
+        Debug.Assert((long)_pendingOffset + SlotSize <= _region.Size - RingBufferLayout.HeaderSize);
         _hasPendingWrite = false;
     }
 
@@ -368,24 +334,14 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
             throw new InvalidOperationException("A read view is already active.");
         }
 
-        long head = Volatile.Read(ref _region.HeadRef);
-        long tail = _cachedTail;
-        if (tail == head)
+        if (!TryAcquireReadSlot(out long head, out int offset))
         {
-            tail = Volatile.Read(ref _region.TailRef);
-            _cachedTail = tail;
-            if (tail == head)
-            {
-                payload = default;
-                length = 0;
-                type = 0;
-                return false; // empty
-            }
+            payload = default;
+            length = 0;
+            type = 0;
+            return false; // empty
         }
 
-        Debug.Assert(tail > head);
-        int offset = (int)(head & _mask) * SlotSize;
-        Debug.Assert(offset >= 0);
         Debug.Assert((long)offset + SlotSize <= _region.Size - RingBufferLayout.HeaderSize);
 
         unsafe
@@ -418,22 +374,93 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
         }
 
         _hasPeekedRead = false;
+        Debug.Assert(_peekedHead >= 0);
 
         // Release: publishes "slot consumed" to the producer once the caller is
         // done with the view. A crash before this store redelivers the message.
         Volatile.Write(ref _region.HeadRef, _peekedHead + 1);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryAcquireWriteSlot(out long tail, out int offset)
+    {
+        // Producer-owned cursor: this process is the only writer.
+        tail = Volatile.Read(ref _region.TailRef);
+
+        // Acquire (only when the cached peer cursor claims the buffer is full):
+        // observes the consumer's release of head, so the slot we are about to
+        // overwrite is guaranteed to be fully consumed.
+        long head = _cachedHead;
+        if (tail - head >= Capacity)
+        {
+            head = Volatile.Read(ref _region.HeadRef);
+            _cachedHead = head;
+            if (tail - head >= Capacity)
+            {
+                offset = 0;
+                return false;
+            }
+        }
+
+        // Invariants: cursors are monotonic, the cached peer cursor is never
+        // ahead of the real one, and the target slot is inside the region.
+        Debug.Assert(tail >= head);
+        Debug.Assert(tail - head < Capacity);
+        Debug.Assert(_cachedHead <= Volatile.Read(ref _region.HeadRef));
+        Debug.Assert((uint)(tail & _mask) < (uint)Capacity);
+        offset = (int)(tail & _mask) * SlotSize;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryAcquireReadSlot(out long head, out int offset)
+    {
+        // Consumer-owned cursor.
+        head = Volatile.Read(ref _region.HeadRef);
+
+        // Acquire (only when the cached peer cursor claims the buffer is empty):
+        // observes the producer's release of the slot contents.
+        long tail = _cachedTail;
+        if (tail == head)
+        {
+            tail = Volatile.Read(ref _region.TailRef);
+            _cachedTail = tail;
+            if (tail == head)
+            {
+                offset = 0;
+                return false;
+            }
+        }
+
+        // Invariants: data is available, the cached peer cursor is never ahead
+        // of the real one, and the source slot is inside the region.
+        Debug.Assert(tail > head);
+        Debug.Assert(_cachedTail <= Volatile.Read(ref _region.TailRef));
+        Debug.Assert((uint)(head & _mask) < (uint)Capacity);
+        offset = (int)(head & _mask) * SlotSize;
+        return true;
+    }
+
     /// <summary>
     /// Blocking convenience wrapper. Respects a cancellation token so callers
-    /// can stop a stalled producer.
+    /// can stop a stalled producer, and throws <see cref="RingBufferTimeoutException"/>
+    /// when the buffer stays full for <see cref="WriteTimeoutSeconds"/> seconds.
     /// </summary>
     public void Write(ReadOnlySpan<byte> payload, int type = 0, CancellationToken cancellationToken = default)
     {
+        Debug.Assert(payload.Length <= MaxPayloadSize);
+        long startTimestamp = Stopwatch.GetTimestamp();
+        long timeoutTicks = WriteTimeoutSeconds * Stopwatch.Frequency;
         SpinWait spin = new();
         while (!TryWrite(type, payload))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (Stopwatch.GetTimestamp() - startTimestamp >= timeoutTicks)
+            {
+                throw new RingBufferTimeoutException(
+                    $"Buffer stayed full for {WriteTimeoutSeconds} seconds; the peer is not consuming.");
+            }
+
             spin.SpinOnce();
         }
     }

@@ -7,6 +7,8 @@ namespace Sparc.Client;
 /// </summary>
 public sealed class InProcessSessionSignal : ISessionSignal
 {
+    private const int CancellationPollMilliseconds = 10;
+
     private readonly AutoResetEvent _event = new(initialState: false);
     private int _disposed;
 
@@ -21,13 +23,28 @@ public sealed class InProcessSessionSignal : ISessionSignal
     public bool Wait(TimeSpan timeout, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return false;
-        }
+        long deadline = timeout == Timeout.InfiniteTimeSpan
+            ? long.MaxValue
+            : Environment.TickCount64 + (long)timeout.TotalMilliseconds;
 
-        int index = WaitHandle.WaitAny([_event, cancellationToken.WaitHandle], timeout);
-        return index == 0;
+        while (true)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+
+            long remaining = deadline - Environment.TickCount64;
+            if (remaining <= 0)
+            {
+                return false;
+            }
+
+            if (_event.WaitOne((int)Math.Min(remaining, CancellationPollMilliseconds)))
+            {
+                return true;
+            }
+        }
     }
 
     public void Dispose()

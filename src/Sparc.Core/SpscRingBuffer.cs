@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Sparc.Core;
@@ -48,6 +49,8 @@ namespace Sparc.Core;
 /// </remarks>
 public sealed class SpscRingBuffer : IRingBuffer
 {
+    private const int WriteTimeoutSeconds = 30;
+
     private readonly byte[] _buffer;
     private readonly int _mask;
 
@@ -67,6 +70,7 @@ public sealed class SpscRingBuffer : IRingBuffer
     // State for the zero-copy lease API. The producer and consumer contracts are
     // single-threaded, so per-instance pending state is safe.
     private long _pendingTail;
+    private int _pendingOffset;
     private int _pendingLength;
     private int _pendingType;
     private bool _hasPendingWrite;
@@ -126,32 +130,13 @@ public sealed class SpscRingBuffer : IRingBuffer
                 $"Payload of {payload.Length} bytes exceeds the maximum of {MaxPayloadSize} bytes.");
         }
 
-        // This thread owns _tail; the value is only changed here.
-        long tail = _tail.Value;
-
-        // Acquire (only when the cached peer cursor claims the buffer is full):
-        // never overwrite the slot the consumer is currently reading.
-        long head = _cachedHead;
-        if (tail - head >= Capacity)
+        if (!TryAcquireWriteSlot(out long tail, out int offset))
         {
-            head = Volatile.Read(ref _head.Value);
-            _cachedHead = head;
-            if (tail - head >= Capacity)
-            {
-                return false; // full
-            }
+            return false; // full
         }
 
-        // Invariants: cursors are monotonic, the cached peer cursor is never
-        // ahead of the real one, and the target slot is inside the array.
-        Debug.Assert(tail >= head);
-        Debug.Assert(tail - head < Capacity);
-        Debug.Assert(_cachedHead <= Volatile.Read(ref _head.Value));
-        int slotIndex = (int)(tail & _mask);
-        Debug.Assert((uint)slotIndex < (uint)Capacity);
-        Debug.Assert(slotIndex * SlotSize + SlotSize <= _buffer.Length);
-
-        Span<byte> slot = _buffer.AsSpan(slotIndex * SlotSize, SlotSize);
+        Debug.Assert((long)offset + SlotSize <= _buffer.Length);
+        Span<byte> slot = _buffer.AsSpan(offset, SlotSize);
         SlotFraming.Write(slot, type, payload);
 
         // Release: the slot bytes above must be visible before the consumer can
@@ -169,33 +154,15 @@ public sealed class SpscRingBuffer : IRingBuffer
                 $"Destination must be at least {MaxPayloadSize} bytes (MaxPayloadSize).", nameof(destination));
         }
 
-        // This thread owns _head.
-        long head = _head.Value;
-
-        // Acquire (only when the cached peer cursor claims the buffer is empty):
-        // observe the producer's release of the slot contents.
-        long tail = _cachedTail;
-        if (tail == head)
+        if (!TryAcquireReadSlot(out long head, out int offset))
         {
-            tail = Volatile.Read(ref _tail.Value);
-            _cachedTail = tail;
-            if (tail == head)
-            {
-                bytesRead = 0;
-                type = 0;
-                return false; // empty
-            }
+            bytesRead = 0;
+            type = 0;
+            return false; // empty
         }
 
-        // Invariants: data is available, the cached peer cursor is never ahead
-        // of the real one, and the source slot is inside the array.
-        Debug.Assert(tail > head);
-        Debug.Assert(_cachedTail <= Volatile.Read(ref _tail.Value));
-        int slotIndex = (int)(head & _mask);
-        Debug.Assert((uint)slotIndex < (uint)Capacity);
-        Debug.Assert(slotIndex * SlotSize + SlotSize <= _buffer.Length);
-
-        ReadOnlySpan<byte> slot = _buffer.AsSpan(slotIndex * SlotSize, SlotSize);
+        Debug.Assert((long)offset + SlotSize <= _buffer.Length);
+        ReadOnlySpan<byte> slot = _buffer.AsSpan(offset, SlotSize);
         SlotFraming.Read(slot, destination, out bytesRead, out type);
 
         // Release: the producer must not overwrite this slot before the copy above
@@ -220,29 +187,18 @@ public sealed class SpscRingBuffer : IRingBuffer
                 $"Payload of {length} bytes exceeds the maximum of {MaxPayloadSize} bytes.");
         }
 
-        long tail = _tail.Value;
-        long head = _cachedHead;
-        if (tail - head >= Capacity)
+        if (!TryAcquireWriteSlot(out long tail, out int offset))
         {
-            head = Volatile.Read(ref _head.Value);
-            _cachedHead = head;
-            if (tail - head >= Capacity)
-            {
-                payload = default;
-                return false; // full
-            }
+            payload = default;
+            return false; // full
         }
 
-        Debug.Assert(tail >= head);
-        Debug.Assert(tail - head < Capacity);
-        int slotIndex = (int)(tail & _mask);
-        Debug.Assert((uint)slotIndex < (uint)Capacity);
-
-        payload = _buffer.AsSpan(slotIndex * SlotSize + RingBufferLayout.MessageHeaderSize, length);
+        _pendingOffset = offset;
         _pendingTail = tail;
         _pendingLength = length;
         _pendingType = type;
         _hasPendingWrite = true;
+        payload = _buffer.AsSpan(offset + RingBufferLayout.MessageHeaderSize, length);
         return true;
     }
 
@@ -255,7 +211,8 @@ public sealed class SpscRingBuffer : IRingBuffer
         }
 
         _hasPendingWrite = false;
-        Span<byte> slot = _buffer.AsSpan((int)(_pendingTail & _mask) * SlotSize, SlotSize);
+        Debug.Assert((long)_pendingOffset + SlotSize <= _buffer.Length);
+        Span<byte> slot = _buffer.AsSpan(_pendingOffset, SlotSize);
         BinaryPrimitives.WriteInt32LittleEndian(slot, _pendingLength);
         BinaryPrimitives.WriteInt32LittleEndian(slot[sizeof(int)..], _pendingType);
 
@@ -272,6 +229,7 @@ public sealed class SpscRingBuffer : IRingBuffer
             throw new InvalidOperationException("No write reservation is active.");
         }
 
+        Debug.Assert((long)_pendingOffset + SlotSize <= _buffer.Length);
         _hasPendingWrite = false;
     }
 
@@ -283,23 +241,16 @@ public sealed class SpscRingBuffer : IRingBuffer
             throw new InvalidOperationException("A read view is already active.");
         }
 
-        long head = _head.Value;
-        long tail = _cachedTail;
-        if (tail == head)
+        if (!TryAcquireReadSlot(out long head, out int offset))
         {
-            tail = Volatile.Read(ref _tail.Value);
-            _cachedTail = tail;
-            if (tail == head)
-            {
-                payload = default;
-                length = 0;
-                type = 0;
-                return false; // empty
-            }
+            payload = default;
+            length = 0;
+            type = 0;
+            return false; // empty
         }
 
-        Debug.Assert(tail > head);
-        ReadOnlySpan<byte> slot = _buffer.AsSpan((int)(head & _mask) * SlotSize, SlotSize);
+        Debug.Assert((long)offset + SlotSize <= _buffer.Length);
+        ReadOnlySpan<byte> slot = _buffer.AsSpan(offset, SlotSize);
         length = BinaryPrimitives.ReadInt32LittleEndian(slot);
         if ((uint)length > (uint)MaxPayloadSize)
         {
@@ -329,23 +280,91 @@ public sealed class SpscRingBuffer : IRingBuffer
         Volatile.Write(ref _head.Value, _peekedHead + 1);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryAcquireWriteSlot(out long tail, out int offset)
+    {
+        // This thread owns _tail; the value is only changed here.
+        tail = _tail.Value;
+
+        // Acquire (only when the cached peer cursor claims the buffer is full):
+        // never overwrite the slot the consumer is currently reading.
+        long head = _cachedHead;
+        if (tail - head >= Capacity)
+        {
+            head = Volatile.Read(ref _head.Value);
+            _cachedHead = head;
+            if (tail - head >= Capacity)
+            {
+                offset = 0;
+                return false;
+            }
+        }
+
+        // Invariants: cursors are monotonic, the cached peer cursor is never
+        // ahead of the real one, and the target slot is inside the array.
+        Debug.Assert(tail >= head);
+        Debug.Assert(tail - head < Capacity);
+        Debug.Assert(_cachedHead <= Volatile.Read(ref _head.Value));
+        Debug.Assert((uint)(tail & _mask) < (uint)Capacity);
+        offset = (int)(tail & _mask) * SlotSize;
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryAcquireReadSlot(out long head, out int offset)
+    {
+        // This thread owns _head.
+        head = _head.Value;
+
+        // Acquire (only when the cached peer cursor claims the buffer is empty):
+        // observe the producer's release of the slot contents.
+        long tail = _cachedTail;
+        if (tail == head)
+        {
+            tail = Volatile.Read(ref _tail.Value);
+            _cachedTail = tail;
+            if (tail == head)
+            {
+                offset = 0;
+                return false;
+            }
+        }
+
+        // Invariants: data is available, the cached peer cursor is never ahead
+        // of the real one, and the source slot is inside the array.
+        Debug.Assert(tail > head);
+        Debug.Assert(_cachedTail <= Volatile.Read(ref _tail.Value));
+        Debug.Assert((uint)(head & _mask) < (uint)Capacity);
+        offset = (int)(head & _mask) * SlotSize;
+        return true;
+    }
+
     /// <summary>
     /// Blocking convenience wrapper: spins until the message fits or the caller
-    /// cancels. For latency sensitive callers prefer
-    /// <see cref="TryWrite(int, ReadOnlySpan{byte})"/>.
+    /// cancels, and throws <see cref="RingBufferTimeoutException"/> when the
+    /// buffer stays full for <see cref="WriteTimeoutSeconds"/> seconds. For
+    /// latency sensitive callers prefer <see cref="TryWrite(int, ReadOnlySpan{byte})"/>.
     /// </summary>
     /// <param name="payload">Payload bytes to copy into the next slot.</param>
     /// <param name="type">Caller-defined message tag.</param>
     /// <param name="cancellationToken">
-    /// Bounds the wait; observed only while the buffer stays full. Pass
-    /// <see cref="CancellationToken.None"/> to wait indefinitely.
+    /// Bounds the wait; observed only while the buffer stays full.
     /// </param>
     public void Write(ReadOnlySpan<byte> payload, int type = 0, CancellationToken cancellationToken = default)
     {
+        Debug.Assert(payload.Length <= MaxPayloadSize);
+        long startTimestamp = Stopwatch.GetTimestamp();
+        long timeoutTicks = WriteTimeoutSeconds * Stopwatch.Frequency;
         SpinWait spin = new();
         while (!TryWrite(type, payload))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (Stopwatch.GetTimestamp() - startTimestamp >= timeoutTicks)
+            {
+                throw new RingBufferTimeoutException(
+                    $"Buffer stayed full for {WriteTimeoutSeconds} seconds; the peer is not consuming.");
+            }
+
             spin.SpinOnce();
         }
     }
@@ -361,8 +380,12 @@ public sealed class SpscRingBuffer : IRingBuffer
         _hasPeekedRead = false;
     }
 
-    /// <summary>A 64-byte-padded 64-bit field so two counters never share a cache line.</summary>
-    [StructLayout(LayoutKind.Explicit, Size = RingBufferLayout.CacheLineSize)]
+    /// <summary>
+    /// A padded 64-bit field so two counters never share a cache line. The
+    /// 128-byte size makes the separation independent of the object's heap
+    /// alignment: two adjacent fields of this size cannot touch one line.
+    /// </summary>
+    [StructLayout(LayoutKind.Explicit, Size = RingBufferLayout.CacheLineSize * 2)]
     private struct PaddedLong
     {
         [FieldOffset(0)]
