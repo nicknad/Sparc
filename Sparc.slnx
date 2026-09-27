@@ -12,6 +12,7 @@
     <Project Path="src/Sparc.Consumer/Sparc.Consumer.csproj" />
     <Project Path="src/Sparc.Core/Sparc.Core.csproj" />
     <Project Path="src/Sparc.Hosting/Sparc.Hosting.csproj" />
+    <Project Path="src/Sparc.Testing/Sparc.Testing.csproj" />
     <Project Path="src/Sparc.Producer/Sparc.Producer.csproj" />
   </Folder>
   <Folder Name="/tests/">

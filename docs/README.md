@@ -13,6 +13,7 @@ This folder goes deeper than the top-level `README.md`:
 | [use-cases.md](use-cases.md) | Where an SPSC shared-memory ring is the right tool, where it is not, and sizing guidance. |
 | [hosting.md](hosting.md) | `Sparc.Hosting`: DI registration, hosted session/worker services, health checks, metrics, configuration, testing. |
 | [channels.md](channels.md) | The typed `SparcChannel<T>` layer: codecs, async API, semantics, overhead. |
+| [testing.md](testing.md) | The `Sparc.Testing` harness: paired endpoints, fake time, timeout helpers. |
 | [how-it-works.md](how-it-works.md) | The full mechanism: region handshake, binary layout, ring algorithm, memory ordering, lease API, sessions, wait modes, crash semantics, platform implementations, tests. |
 | [performance-invariants.md](performance-invariants.md) | Every invariant that makes the measured performance possible, grouped by kind, each with its mechanism, where it lives in code, what it buys, and what breaks if violated. |
 | [benchmarking.md](benchmarking.md) | The benchmark harnesses, how to run them, measurement traps, current numbers, and the regression check. |
@@ -32,6 +33,7 @@ Suggested reading order for a newcomer: `concept.md` -> `use-cases.md` ->
 | Producer/consumer sessions, latency histogram | `src/Sparc.Client` |
 | Typed channel layer (`SparcChannel<T>`, codecs) | `src/Sparc.Channels` |
 | Host integration: DI, hosted services, health, metrics | `src/Sparc.Hosting` |
+| Test harness (paired endpoints, fake time, timeouts) | `src/Sparc.Testing` |
 | Producer/consumer CLIs | `src/Sparc.Producer`, `src/Sparc.Consumer` |
 | Hosts | `samples/Sparc.WebApp`, `samples/yarp/*` |
 | Verification | `tests/Sparc.UnitTests`, `tests/Sparc.ConcurrencyTests`, `tests/Sparc.ProcessTests` |

@@ -51,6 +51,7 @@ in mind, and open an issue for anything that does not hold up.
 
 * [docs/hosting.md](docs/hosting.md) — DI, hosted session/worker services, health checks, metrics, configuration.
 * [docs/channels.md](docs/channels.md) — the typed `SparcChannel<T>` layer: codecs, async API, semantics, overhead.
+* [docs/testing.md](docs/testing.md) — the `Sparc.Testing` harness: paired endpoints, fake time, timeout helpers.
 * [docs/concept.md](docs/concept.md) — the problem, the core idea, guarantees, and how it compares to pipes/sockets/queues.
 * [docs/use-cases.md](docs/use-cases.md) — when to use it, sample patterns, anti-patterns, sizing.
 * [docs/how-it-works.md](docs/how-it-works.md) — handshake, layout, algorithm, memory ordering, lease API, sessions, wait modes, crash semantics, platforms, tests.
@@ -75,6 +76,7 @@ in mind, and open an issue for anything that does not hold up.
 │   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
 │   ├── Sparc.Channels/        typed SparcChannel<T> writer/reader with codecs
 │   ├── Sparc.Hosting/         AddSparcIpc/AddSparcChannel, hosted services, health check, metrics
+│   ├── Sparc.Testing/         paired in-memory endpoints, fake-time sessions, timeout helpers
 │   ├── Sparc.Producer/        producer CLI (args → session → summary → exit code)
 │   └── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
 ├── samples/
@@ -187,6 +189,7 @@ Reference the projects (or packages once published) you need:
 | `Sparc.Client` | you need producer/consumer sessions and verification |
 | `Sparc.Channels` | you want a typed `Channel<T>`-style async API with codecs |
 | `Sparc.Hosting` | you want DI, hosted endpoints, health checks and metrics in one registration |
+| `Sparc.Testing` | you are writing tests (paired endpoints, fake time, timeouts) |
 
 ### Web app / worker service / generic host
 
