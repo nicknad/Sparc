@@ -194,6 +194,26 @@ public sealed class RingBufferRegion : IDisposable
         }
     }
 
+    /// <summary>Reads an endpoint's "waiting for a notification" flag.</summary>
+    internal int ReadWaiting(RingBufferEndpointRole role)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        unsafe
+        {
+            return Volatile.Read(ref Unsafe.AsRef<int>(_region.Pointer + WaitingOffset(role)));
+        }
+    }
+
+    /// <summary>Writes an endpoint's "waiting for a notification" flag.</summary>
+    internal void WriteWaiting(RingBufferEndpointRole role, int waiting)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        unsafe
+        {
+            Volatile.Write(ref Unsafe.AsRef<int>(_region.Pointer + WaitingOffset(role)), waiting);
+        }
+    }
+
     /// <summary>
     /// Atomically transitions an endpoint state if it currently equals
     /// <paramref name="expected"/>, returning the previous value.
@@ -223,6 +243,13 @@ public sealed class RingBufferRegion : IDisposable
     {
         RingBufferEndpointRole.Producer => RingBufferLayout.ProducerStateOffset,
         RingBufferEndpointRole.Consumer => RingBufferLayout.ConsumerStateOffset,
+        _ => throw new ArgumentOutOfRangeException(nameof(role), role, null),
+    };
+
+    private static int WaitingOffset(RingBufferEndpointRole role) => role switch
+    {
+        RingBufferEndpointRole.Producer => RingBufferLayout.ProducerWaitingOffset,
+        RingBufferEndpointRole.Consumer => RingBufferLayout.ConsumerWaitingOffset,
         _ => throw new ArgumentOutOfRangeException(nameof(role), role, null),
     };
 

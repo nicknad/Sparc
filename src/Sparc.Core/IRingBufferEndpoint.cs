@@ -26,4 +26,18 @@ public interface IRingBufferEndpoint : IRingBuffer
     /// retry indefinitely.
     /// </param>
     void Connect(RingBufferEndpointRole role, bool takeover = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Declares whether this endpoint is currently blocked waiting for the peer
+    /// (consumer: for data, producer: for space). The peer reads it before
+    /// raising a notification, so it only pays the OS signal when it can help.
+    /// </summary>
+    /// <param name="waiting">True while blocked, false once awake.</param>
+    void SetWaiting(bool waiting);
+
+    /// <summary>
+    /// True when the peer declared that it is blocked waiting for this endpoint
+    /// (producer reads the consumer's flag, consumer reads the producer's).
+    /// </summary>
+    bool IsPeerWaiting();
 }

@@ -326,6 +326,108 @@ public class SessionTests
     }
 
     [Fact]
+    public async Task NotificationSessionsComplete()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64);
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64);
+        using SessionNotification notification = SessionNotification.CreateInProcess();
+
+        ConsumerSession consumer = new(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 5_000,
+            IdleTimeout = TimeSpan.FromSeconds(10),
+            WaitMode = SessionWaitMode.Notification,
+            Notification = notification,
+        });
+
+        Task<ConsumerRunResult> consumerTask = Task.Run(
+            () => consumer.Run(TestContext.Current.CancellationToken),
+            TestContext.Current.CancellationToken);
+
+        ProducerRunResult producerResult = new ProducerSession(producerBuffer, new ProducerSessionOptions
+        {
+            Count = 5_000,
+            PayloadSize = 32,
+            FullTimeout = TimeSpan.FromSeconds(10),
+            WaitMode = SessionWaitMode.Notification,
+            Notification = notification,
+        }).Run(TestContext.Current.CancellationToken);
+
+        ConsumerRunResult consumerResult = await consumerTask;
+
+        Assert.Equal(SessionStopReason.Completed, producerResult.Reason);
+        Assert.Equal(5_000, producerResult.Produced);
+        Assert.Equal(SessionStopReason.Completed, consumerResult.Reason);
+        Assert.Equal(5_000, consumerResult.Received);
+    }
+
+    [Fact]
+    public void NotificationModeRequiresNotification()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, NewName(), 16, 64);
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, NewName(), 16, 64);
+
+        Assert.Throws<ArgumentException>(() => new ProducerSession(producerBuffer, new ProducerSessionOptions
+        {
+            PayloadSize = 32,
+            WaitMode = SessionWaitMode.Notification,
+        }));
+
+        Assert.Throws<ArgumentException>(() => new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
+        {
+            WaitMode = SessionWaitMode.Notification,
+        }));
+    }
+
+    [Fact]
+    public async Task NotificationRaisesThePeerLatchForAPacedProducer()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
+
+        CountingSignal data = new();
+        CountingSignal space = new();
+        using SessionNotification notification = new(data, space);
+
+        ConsumerSession consumer = new(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 5,
+            IdleTimeout = TimeSpan.FromSeconds(10),
+            WaitMode = SessionWaitMode.Notification,
+            Notification = notification,
+        });
+
+        Task<ConsumerRunResult> consumerTask = Task.Run(
+            () => consumer.Run(TestContext.Current.CancellationToken),
+            TestContext.Current.CancellationToken);
+
+        ProducerRunResult producerResult = new ProducerSession(producerBuffer, new ProducerSessionOptions
+        {
+            Count = 5,
+            PayloadSize = 32,
+            PerMessageDelay = TimeSpan.FromMilliseconds(20),
+            FullTimeout = TimeSpan.FromSeconds(10),
+            WaitMode = SessionWaitMode.Notification,
+            Notification = notification,
+        }).Run(TestContext.Current.CancellationToken);
+
+        ConsumerRunResult consumerResult = await consumerTask;
+
+        Assert.Equal(SessionStopReason.Completed, producerResult.Reason);
+        Assert.Equal(SessionStopReason.Completed, consumerResult.Reason);
+        Assert.Equal(5, consumerResult.Received);
+
+        // The consumer is idle between the paced messages, so the producer must
+        // have seen its waiting flag and raised the data latch.
+        Assert.True(data.Signals >= 3, $"data latch was raised only {data.Signals} times");
+    }
+
+    [Fact]
     public void SessionsRejectNegativePacing()
     {
         InMemoryMemoryRegionFactory factory = new();
@@ -372,5 +474,24 @@ public class SessionTests
         RingBufferMessage.Write(payload, sequence: 0, Stopwatch.GetTimestamp());
         payload.AsSpan(RingBufferMessage.HeaderSize).Fill(0x00);
         return payload;
+    }
+
+    /// <summary>An in-process latch that counts raises, to observe the notification protocol.</summary>
+    private sealed class CountingSignal : ISessionSignal
+    {
+        private readonly InProcessSessionSignal _inner = new();
+
+        public int Signals;
+
+        public void Signal()
+        {
+            Interlocked.Increment(ref Signals);
+            _inner.Signal();
+        }
+
+        public bool Wait(TimeSpan timeout, CancellationToken cancellationToken) =>
+            _inner.Wait(timeout, cancellationToken);
+
+        public void Dispose() => _inner.Dispose();
     }
 }

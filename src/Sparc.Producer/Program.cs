@@ -77,6 +77,7 @@ internal static class Program
             cancellation.Cancel();
         };
 
+        using SessionNotification? notification = options.Notify ? CreateNotification(options.Name) : null;
         ProducerSession session = new(buffer, new ProducerSessionOptions
         {
             Count = options.Count,
@@ -85,7 +86,10 @@ internal static class Program
             FullTimeout = options.FullTimeout,
             PerMessageDelay = options.Delay,
             Takeover = options.Takeover,
-            WaitMode = options.SpinOnly ? SessionWaitMode.SpinOnly : SessionWaitMode.SpinThenSleep,
+            WaitMode = options.Notify
+                ? SessionWaitMode.Notification
+                : options.SpinOnly ? SessionWaitMode.SpinOnly : SessionWaitMode.SpinThenSleep,
+            Notification = notification,
         });
 
         ProducerRunResult result = session.Run(cancellation.Token);
@@ -97,6 +101,18 @@ internal static class Program
         }
 
         return MapReason(result.Reason);
+    }
+
+    private static SessionNotification CreateNotification(string regionName)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new RingBufferPlatformNotSupportedException(
+                "--notify uses named OS semaphores, which .NET supports on Windows only; " +
+                "use --spin-only on this platform.");
+        }
+
+        return SessionNotification.CreateNamed(regionName);
     }
 
     private static int MapReason(SessionStopReason reason) => reason switch

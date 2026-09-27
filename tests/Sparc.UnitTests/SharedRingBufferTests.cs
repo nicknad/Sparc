@@ -183,6 +183,42 @@ public class SharedRingBufferTests
     }
 
     [Fact]
+    public void WaitingFlagsRoundTripBetweenRoles()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        using SharedRingBuffer consumer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        producer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+        consumer.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(producer.IsPeerWaiting());
+        Assert.False(consumer.IsPeerWaiting());
+
+        consumer.SetWaiting(true);
+        Assert.True(producer.IsPeerWaiting());
+        Assert.False(consumer.IsPeerWaiting());
+
+        consumer.SetWaiting(false);
+        Assert.False(producer.IsPeerWaiting());
+
+        producer.SetWaiting(true);
+        Assert.True(consumer.IsPeerWaiting());
+        producer.SetWaiting(false);
+        Assert.False(consumer.IsPeerWaiting());
+    }
+
+    [Fact]
+    public void WaitingFlagsRequireConnect()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(factory, NewName(), 4, 64);
+
+        Assert.Throws<InvalidOperationException>(() => buffer.SetWaiting(true));
+        Assert.Throws<InvalidOperationException>(() => buffer.IsPeerWaiting());
+    }
+
+    [Fact]
     public void RoleConflictIsRejectedUnlessTakeover()
     {
         InMemoryMemoryRegionFactory factory = new();

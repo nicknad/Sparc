@@ -65,6 +65,17 @@ public static class RingBufferLayout
     public const int ProducerStateOffset = 32;
     public const int ConsumerStateOffset = 36;
 
+    /// <summary>
+    /// Consumer "I am blocked waiting for data" flag (0/1). Written by the
+    /// consumer while it waits in <c>SessionWaitMode.Notification</c> and read by
+    /// the producer before signaling; lives in the reserved header area, so the
+    /// layout version is unchanged.
+    /// </summary>
+    public const int ConsumerWaitingOffset = 40;
+
+    /// <summary>Producer "I am blocked waiting for space" flag (0/1).</summary>
+    public const int ProducerWaitingOffset = 44;
+
     /// <summary>Consumer-owned read cursor. Own cache line.</summary>
     public const int HeadOffset = 64;
 

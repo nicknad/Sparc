@@ -438,6 +438,35 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
         }
     }
 
+    /// <inheritdoc />
+    public void SetWaiting(bool waiting)
+    {
+        ThrowIfDisposed();
+        if (_role is not { } role)
+        {
+            throw new InvalidOperationException(
+                "Connect must be called before an endpoint can declare that it is waiting.");
+        }
+
+        _region.WriteWaiting(role, waiting ? 1 : 0);
+    }
+
+    /// <inheritdoc />
+    public bool IsPeerWaiting()
+    {
+        ThrowIfDisposed();
+        if (_role is not { } role)
+        {
+            throw new InvalidOperationException(
+                "Connect must be called before an endpoint can read the peer's waiting flag.");
+        }
+
+        RingBufferEndpointRole peer = role == RingBufferEndpointRole.Producer
+            ? RingBufferEndpointRole.Consumer
+            : RingBufferEndpointRole.Producer;
+        return _region.ReadWaiting(peer) != 0;
+    }
+
     /// <summary>Marks this endpoint as faulted so the peer can stop waiting for it.</summary>
     public void Abort()
     {
@@ -445,6 +474,7 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
         if (!_aborted && _role is { } role)
         {
             _aborted = true;
+            _region.WriteWaiting(role, 0);
             _region.WriteEndpointState(role, RingBufferEndpointState.Faulted);
         }
     }
@@ -460,6 +490,7 @@ public sealed class SharedRingBuffer : IRingBufferEndpoint, IDisposable
         {
             try
             {
+                _region.WriteWaiting(role, 0);
                 _region.WriteEndpointState(role, RingBufferEndpointState.Stopped);
             }
             catch (ObjectDisposedException)

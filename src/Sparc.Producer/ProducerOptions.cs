@@ -19,6 +19,7 @@ internal sealed class ProducerOptions
     public TimeSpan Delay { get; private set; }
     public bool Takeover { get; private set; }
     public bool SpinOnly { get; private set; }
+    public bool Notify { get; private set; }
     public bool RecreateStale { get; private set; }
     public bool RequireExisting { get; private set; }
     public bool Quiet { get; private set; }
@@ -52,6 +53,8 @@ internal sealed class ProducerOptions
           --delay-us <us>          Pause between published messages (slow-producer simulation, default: 0).
           --takeover               Claim the producer role from a crashed peer.
           --spin-only              Busy-spin instead of sleeping while the buffer is full.
+          --notify                 Block on an OS signal while full (Windows; needs a matching
+                                   --notify consumer). Near-spin latency, no busy core.
           --recreate-stale         Delete and recreate an incompatible/stale region (destructive).
           --require-existing       Never create the region; fail if it does not exist.
           --quiet                  Suppress progress output.
@@ -108,6 +111,9 @@ internal sealed class ProducerOptions
                 case "--spin-only":
                     options.SpinOnly = true;
                     break;
+                case "--notify":
+                    options.Notify = true;
+                    break;
                 case "--recreate-stale":
                     options.RecreateStale = true;
                     break;
@@ -125,6 +131,11 @@ internal sealed class ProducerOptions
         if (options.Name.Length == 0)
         {
             throw new UsageException("--name is required.");
+        }
+
+        if (options.SpinOnly && options.Notify)
+        {
+            throw new UsageException("--spin-only and --notify are mutually exclusive.");
         }
 
         RingBufferLayout.ValidateGeometry(options.Capacity, options.EffectiveSlotSize);

@@ -113,10 +113,10 @@ latency(us): min=1.20 mean=122.44 p50=51.20 p90=102.40 p95=204.80 p99=409.60 p99
 ### CLI
 
 `producer --name <name> [--count n] [--size bytes] [--capacity slots] [--slot-size bytes]`
-`[--type int] [--open-timeout ms] [--full-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--recreate-stale] [--require-existing] [--quiet]`
+`[--type int] [--open-timeout ms] [--full-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--notify] [--recreate-stale] [--require-existing] [--quiet]`
 
 `consumer --name <name> [--count n] [--capacity slots] [--slot-size bytes] [--type int]`
-`[--open-timeout ms] [--idle-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--recreate-stale] [--require-existing] [--no-verify] [--no-verify-payload] [--quiet]`
+`[--open-timeout ms] [--idle-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--notify] [--recreate-stale] [--require-existing] [--no-verify] [--no-verify-payload] [--quiet]`
 
 `--count 0` on the consumer means "consume until the producer stops".
 `--size` is the payload size; layout is `[sequence:int64][timestamp:int64][fill…]` (min 16 bytes).
@@ -214,15 +214,31 @@ transport and transfer status; `POST /transfer?count=n` starts another transfer.
 One 100,000-message transfer runs at startup; set `Sparc:AutoStartCount=0` to
 disable it.
 
-Sessions are intentionally **synchronous and blocking** (they spin on the lock-free
-buffer); hosts should invoke them on a background thread (`Task.Run`,
-`BackgroundService`). Cancellation is checked on the full/empty paths and
-periodically on the hot path; `SharedRingBuffer.Connect` and `SpscRingBuffer.Write`
-also accept a `CancellationToken` that bounds their spin loops, and the sessions
-report cancellation during role claiming as `SessionStopReason.Cancelled` rather
-than throwing. `ProducerSessionOptions`/`ConsumerSessionOptions` also accept a
-`PerMessageDelay` (CLI: `--delay-us`) to pace one endpoint and simulate a
-producer/consumer speed mismatch; see the benchmark section for measured effects.
+Sessions are intentionally **synchronous and blocking**; hosts should invoke them on a
+background thread (`Task.Run`, `BackgroundService`). How an endpoint waits while the buffer
+is full/empty is `SessionWaitMode` (CLI: `--spin-only`, `--notify`):
+
+| Mode | Wait behavior | Idle cost | Typical idle wake-up |
+|---|---|---|---|
+| `SpinThenSleep` (default) | `SpinWait`: spin, yield, sleep | ~0 % of a core | ~5 ms (timer) |
+| `SpinOnly` | `Thread.SpinWait`, never sleeps | 1 core | ~µs |
+| `Notification` | blocks on an OS latch the peer raises | ~0 % of a core | ~µs (measured p50 7.6 µs) |
+
+`Notification` needs a `SessionNotification` shared by both endpoints
+(`CreateInProcess()` when both roles share a process, `CreateNamed(regionName)` across
+processes). Named latches use named semaphores, which .NET supports on Windows only; on
+Unix-like systems use the other modes for now. The peer only raises the latch when the
+other side has declared itself waiting (the `ConsumerWaiting`/`ProducerWaiting` header
+flags), so a running peer pays nothing; the waiter always re-checks the buffer, so a lost
+raise only means falling back to a bounded poll slice.
+
+Cancellation is checked on the full/empty paths and periodically on the hot path;
+`SharedRingBuffer.Connect` and `SpscRingBuffer.Write` also accept a `CancellationToken`
+that bounds their spin loops, and the sessions report cancellation during role claiming as
+`SessionStopReason.Cancelled` rather than throwing. `ProducerSessionOptions`/
+`ConsumerSessionOptions` also accept a `PerMessageDelay` (CLI: `--delay-us`) to pace one
+endpoint and simulate a producer/consumer speed mismatch; see the benchmark section for
+measured effects.
 
 Structured outcomes replace console/exit-code decisions:
 
@@ -385,7 +401,9 @@ Offset  Size  Field
 28      4     Flags            reserved (0)
 32      4     ProducerState    advisory endpoint state
 36      4     ConsumerState    advisory endpoint state
-40      24    Reserved         zero
+40      4     ConsumerWaiting  1 while the consumer blocks on a notification
+44      4     ProducerWaiting  1 while the producer blocks on a notification
+48      16    Reserved         zero
 64      8     Head             consumer-owned sequence (own cache line)
 72      56    Padding
 128     8     Tail             producer-owned sequence (own cache line)
@@ -588,8 +606,8 @@ microseconds:
   `MaxPayloadSize` destination buffer.
 * p99.9/max (~0.3 s) are host VM scheduling stalls that recur in every capture on this
   machine, not ring behavior. p99 ≈ 15.6 ms is the Windows timer tick that `SpinWait`
-  falls back to when the consumer catches up and the buffer goes empty; `--spin-only`
-  removes it.
+  falls back to when the consumer catches up and the buffer goes empty; `--spin-only` and
+  `--notify` remove it.
 * Latencies come from a 16-sub-bucket log histogram, so percentiles are approximate by at
   most 1/16 of the value.
 
@@ -609,10 +627,10 @@ Same harness with one endpoint paced (`--delay-us`); rates in msg/s, latencies i
   producer burns none.
 * **Producer << consumer**: the buffer stays empty and latency is the consumer's
   *idle-detection* latency — 5.1 ms p50 — because `SpinWait` yields and then sleeps rather
-  than busy-spinning. `--spin-only` (or `SessionWaitMode.SpinOnly`) replaces the sleep with
-  an unbounded spin: measured p50 drops from 6.45 ms to 3.9 µs on the same scenario, at the
-  cost of a busy core while the peer is idle. This is the number that matters most for
-  telemetry consumers.
+  than busy-spinning. Both alternatives were measured on the same scenario: `--spin-only`
+  cuts p50 to 3.9 µs at the cost of a busy core while the peer is idle, and `--notify`
+  (Windows) blocks on an OS latch for a p50 of 7.6 µs at ~2 % consumer CPU. This is the
+  number that matters most for telemetry consumers.
 * **Producer ≈ consumer**: throughput tracks the slower side, and latency sits at the queue
   operating point (the startup backlog fills the 1024-slot buffer before both ends settle).
 

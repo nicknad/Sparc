@@ -28,6 +28,12 @@ public sealed class ProducerSession
     {
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(options);
+        if (options.WaitMode == SessionWaitMode.Notification && options.Notification is null)
+        {
+            throw new ArgumentException(
+                "WaitMode.Notification requires a SessionNotification instance.", nameof(options));
+        }
+
         ProducerSessionOptions.Validate(
             options.Count, options.PayloadSize, options.PerMessageDelay, buffer.MaxPayloadSize);
 
@@ -75,6 +81,7 @@ public sealed class ProducerSession
                 RingBufferMessage.Write(slot, produced, _timeProvider.GetTimestamp());
                 RingBufferMessage.FillPayload(slot);
                 _buffer.CommitWrite();
+                SignalDataIfPeerWaiting();
 
                 if (firstPublishTimestamp == 0)
                 {
@@ -130,13 +137,14 @@ public sealed class ProducerSession
                 break;
             }
 
-            WaitWhileFull(ref spin);
+            WaitWhileFull(ref spin, cancellationToken);
         }
 
-        TimeSpan elapsed = _timeProvider.GetElapsedTime(startTimestamp);
+        long endTimestamp = _timeProvider.GetTimestamp();
+        TimeSpan elapsed = _timeProvider.GetElapsedTime(startTimestamp, endTimestamp);
         TimeSpan activeElapsed = firstPublishTimestamp == 0
             ? TimeSpan.Zero
-            : _timeProvider.GetElapsedTime(firstPublishTimestamp);
+            : _timeProvider.GetElapsedTime(firstPublishTimestamp, endTimestamp);
         _logger.LogDebug(
             "Producer session finished: produced={Produced} reason={Reason} elapsed={Elapsed} activeElapsed={ActiveElapsed}",
             produced, reason, elapsed, activeElapsed);
@@ -154,8 +162,39 @@ public sealed class ProducerSession
         };
     }
 
-    private void WaitWhileFull(ref SpinWait spin)
+    private void SignalDataIfPeerWaiting()
     {
+        if (_options.WaitMode == SessionWaitMode.Notification && _buffer.IsPeerWaiting())
+        {
+            _options.Notification!.Data.Signal();
+        }
+    }
+
+    private void WaitWhileFull(ref SpinWait spin, CancellationToken cancellationToken)
+    {
+        if (_options.WaitMode == SessionWaitMode.Notification)
+        {
+            // Declare the wait before the re-check: if the consumer frees a slot
+            // after this point it reads the flag and raises the latch, so the
+            // wait below cannot miss it.
+            _buffer.SetWaiting(true);
+            try
+            {
+                if (_buffer.Count < _buffer.Capacity)
+                {
+                    return; // space appeared before the wait; retry the publish
+                }
+
+                _options.Notification!.Space.Wait(SessionWaitTiming.WaitSlice, cancellationToken);
+            }
+            finally
+            {
+                _buffer.SetWaiting(false);
+            }
+
+            return;
+        }
+
         if (_options.WaitMode == SessionWaitMode.SpinOnly)
         {
             Thread.SpinWait(64);

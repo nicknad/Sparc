@@ -34,6 +34,14 @@ public sealed class ProducerSessionOptions
     /// </summary>
     public SessionWaitMode WaitMode { get; init; } = SessionWaitMode.SpinThenSleep;
 
+    /// <summary>
+    /// Notification latches; required when <see cref="WaitMode"/> is
+    /// <see cref="SessionWaitMode.Notification"/>. The consumer endpoint must be
+    /// given the same pair (same process) or a pair created from the same region
+    /// name (<see cref="SessionNotification.CreateNamed"/>). The host owns it.
+    /// </summary>
+    public SessionNotification? Notification { get; init; }
+
     internal static void Validate(long count, int payloadSize, TimeSpan perMessageDelay, int maxPayloadSize)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);

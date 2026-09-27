@@ -18,4 +18,12 @@ public enum SessionWaitMode
     /// idle. Intended for latency-sensitive consumers.
     /// </summary>
     SpinOnly = 1,
+
+    /// <summary>
+    /// Block on an OS notification (<see cref="SessionNotification"/>) that the
+    /// peer raises when it publishes or consumes. Near-spin wake-up latency
+    /// without a pinned core: the blocked endpoint costs no CPU. Both endpoints
+    /// must use this mode and share the same <see cref="SessionNotification"/>.
+    /// </summary>
+    Notification = 2,
 }

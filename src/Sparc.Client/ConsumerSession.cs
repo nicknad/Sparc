@@ -30,6 +30,11 @@ public sealed class ConsumerSession
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentOutOfRangeException.ThrowIfLessThan(options.PerMessageDelay, TimeSpan.Zero);
+        if (options.WaitMode == SessionWaitMode.Notification && options.Notification is null)
+        {
+            throw new ArgumentException(
+                "WaitMode.Notification requires a SessionNotification instance.", nameof(options));
+        }
 
         _buffer = buffer;
         _options = options;
@@ -120,11 +125,12 @@ public sealed class ConsumerSession
                 break;
             }
 
-            WaitWhileEmpty(ref spin);
+            WaitWhileEmpty(ref spin, cancellationToken);
         }
 
-        TimeSpan elapsed = ComputeElapsed(state, runStartTimestamp);
-        TimeSpan runElapsed = _timeProvider.GetElapsedTime(runStartTimestamp);
+        long endTimestamp = _timeProvider.GetTimestamp();
+        TimeSpan elapsed = ComputeElapsed(state, runStartTimestamp, endTimestamp);
+        TimeSpan runElapsed = _timeProvider.GetElapsedTime(runStartTimestamp, endTimestamp);
 
         _logger.LogDebug(
             "Consumer session finished: received={Received} reason={Reason} elapsed={Elapsed} runElapsed={RunElapsed}",
@@ -163,6 +169,7 @@ public sealed class ConsumerSession
                 // Consume the invalid message (the copy path advanced head before
                 // verifying) so the session stops instead of re-reading it.
                 _buffer.AdvanceRead();
+                SignalSpaceIfPeerWaiting();
                 return -1;
             }
         }
@@ -180,6 +187,7 @@ public sealed class ConsumerSession
         }
 
         _buffer.AdvanceRead();
+        SignalSpaceIfPeerWaiting();
 
         state.Expected++;
         state.Received++;
@@ -246,13 +254,43 @@ public sealed class ConsumerSession
         return SessionStopReason.Completed;
     }
 
-    private TimeSpan ComputeElapsed(ReadState state, long runStartTimestamp) =>
+    private TimeSpan ComputeElapsed(ReadState state, long runStartTimestamp, long endTimestamp) =>
         state.Received > 1 && state.FirstMessageTimestamp != 0
             ? _timeProvider.GetElapsedTime(state.FirstMessageTimestamp, state.LastMessageTimestamp)
-            : _timeProvider.GetElapsedTime(runStartTimestamp);
+            : _timeProvider.GetElapsedTime(runStartTimestamp, endTimestamp);
 
-    private void WaitWhileEmpty(ref SpinWait spin)
+    private void SignalSpaceIfPeerWaiting()
     {
+        if (_options.WaitMode == SessionWaitMode.Notification && _buffer.IsPeerWaiting())
+        {
+            _options.Notification!.Space.Signal();
+        }
+    }
+
+    private void WaitWhileEmpty(ref SpinWait spin, CancellationToken cancellationToken)
+    {
+        if (_options.WaitMode == SessionWaitMode.Notification)
+        {
+            // Declare the wait before the re-check: a producer that publishes
+            // after this point reads the flag and raises the latch.
+            _buffer.SetWaiting(true);
+            try
+            {
+                if (_buffer.Count > 0)
+                {
+                    return; // data appeared before the wait; retry the read
+                }
+
+                _options.Notification!.Data.Wait(SessionWaitTiming.WaitSlice, cancellationToken);
+            }
+            finally
+            {
+                _buffer.SetWaiting(false);
+            }
+
+            return;
+        }
+
         if (_options.WaitMode == SessionWaitMode.SpinOnly)
         {
             Thread.SpinWait(64);

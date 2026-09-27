@@ -38,10 +38,19 @@ public sealed class ConsumerSessionOptions
 
     /// <summary>
     /// How to wait while the buffer stays empty. <see cref="SessionWaitMode.SpinOnly"/>
-    /// removes the millisecond sleep granularity at the cost of a busy core; it
-    /// is the mode to pick for the lowest one-way latency.
+    /// removes the millisecond sleep granularity at the cost of a busy core;
+    /// <see cref="SessionWaitMode.Notification"/> blocks on an OS signal and
+    /// costs no CPU while idle.
     /// </summary>
     public SessionWaitMode WaitMode { get; init; } = SessionWaitMode.SpinThenSleep;
+
+    /// <summary>
+    /// Notification latches; required when <see cref="WaitMode"/> is
+    /// <see cref="SessionWaitMode.Notification"/>. The producer endpoint must be
+    /// given the same pair (same process) or a pair created from the same region
+    /// name (<see cref="SessionNotification.CreateNamed"/>). The host owns it.
+    /// </summary>
+    public SessionNotification? Notification { get; init; }
 }
 
 /// <summary>Progress notification emitted every ~10% of the requested count.</summary>

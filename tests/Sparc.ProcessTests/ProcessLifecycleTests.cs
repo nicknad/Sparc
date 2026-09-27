@@ -94,6 +94,40 @@ public class ProcessLifecycleTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task NotifyMode_FullRoundTrip()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // named semaphores are Windows-only
+        }
+
+        string name = SparcProcesses.NewName();
+        Process? consumer = null;
+        Process? producer = null;
+
+        try
+        {
+            producer = SparcProcesses.StartProducer("--name", name, "--count", "100000", "--notify");
+            await SparcProcesses.WaitForReadyAsync(producer);
+
+            consumer = SparcProcesses.StartConsumer("--name", name, "--count", "100000", "--notify");
+
+            ProcessResult producerResult = await SparcProcesses.WaitAsync(producer, ProcessTimeoutMs);
+            ProcessResult consumerResult = await SparcProcesses.WaitAsync(consumer, ProcessTimeoutMs);
+            output.WriteLine(consumerResult.StdOut);
+
+            Assert.Equal(0, producerResult.ExitCode);
+            Assert.Equal(0, consumerResult.ExitCode);
+            Assert.Contains("consumed=100000", consumerResult.StdOut, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Kill(producer);
+            Kill(consumer);
+        }
+    }
+
+    [Fact]
     public async Task SecondProducer_ExitsWithRoleConflict()
     {
         string name = SparcProcesses.NewName();
