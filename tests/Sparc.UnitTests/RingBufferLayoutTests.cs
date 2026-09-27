@@ -42,6 +42,34 @@ public class RingBufferLayoutTests
         Assert.Throws<ArgumentOutOfRangeException>(() => RingBufferLayout.ValidateGeometry(4, 8));
         RingBufferLayout.ValidateGeometry(4, 9);
     }
+
+    [Fact]
+    public void RoundSlotSizeToCacheLineAlignsUp()
+    {
+        Assert.Equal(64, RingBufferLayout.RoundSlotSizeToCacheLine(1));
+        Assert.Equal(64, RingBufferLayout.RoundSlotSizeToCacheLine(64));
+        Assert.Equal(128, RingBufferLayout.RoundSlotSizeToCacheLine(65));
+        Assert.Equal(256, RingBufferLayout.RoundSlotSizeToCacheLine(256));
+        Assert.Equal(320, RingBufferLayout.RoundSlotSizeToCacheLine(257));
+        Assert.Throws<ArgumentOutOfRangeException>(() => RingBufferLayout.RoundSlotSizeToCacheLine(0));
+    }
+
+    [Theory]
+    [InlineData(16)]
+    [InlineData(64)]
+    [InlineData(248)]
+    [InlineData(249)]
+    [InlineData(4096)]
+    [InlineData(16384)]
+    public void DerivedSlotSizeFitsPayloadAndIsAligned(int payloadSize)
+    {
+        int raw = payloadSize + RingBufferLayout.MessageHeaderSize;
+        int slot = RingBufferLayout.RoundSlotSizeToCacheLine(raw);
+
+        Assert.Equal(0, slot % RingBufferLayout.CacheLineSize);
+        Assert.True(RingBufferLayout.MaxPayloadSizeFor(slot) >= payloadSize);
+        Assert.True(slot - raw < RingBufferLayout.CacheLineSize);
+    }
 }
 
 public class RingBufferHeaderTests

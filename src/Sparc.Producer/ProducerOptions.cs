@@ -23,8 +23,11 @@ internal sealed class ProducerOptions
     public bool Quiet { get; private set; }
     public bool ShowHelp { get; private set; }
 
-    public int EffectiveSlotSize =>
-        SlotSize > 0 ? SlotSize : Math.Max(RingBufferLayout.DefaultSlotSize, Size + RingBufferLayout.MessageHeaderSize);
+    public int EffectiveSlotSize => SlotSize > 0
+        ? SlotSize
+        : Math.Max(
+            RingBufferLayout.DefaultSlotSize,
+            RingBufferLayout.RoundSlotSizeToCacheLine(Size + RingBufferLayout.MessageHeaderSize));
 
     public const string Usage = """
         Sparc.Producer — writes fixed-size messages into a cross-process SPSC ring buffer.
@@ -40,7 +43,8 @@ internal sealed class ProducerOptions
           --size <bytes>           Payload bytes per message; must be >= 16 and <= slotSize-8 (default: 64).
                                    Layout: [sequence:int64][timestamp:int64][fill...].
           --capacity <slots>       Slot count; power of two (default: 1024).
-          --slot-size <bytes>      Bytes per slot (default: max(256, size+8)). The first creator wins.
+          --slot-size <bytes>      Bytes per slot (default: max(256, size+8) rounded up to a
+                                   64-byte cache line). The first creator wins.
           --type <int>             Message type tag (default: 1).
           --open-timeout <ms>      Wait for/lock the region (default: 10000).
           --full-timeout <ms>      Abort if the buffer stays full this long (default: 30000).

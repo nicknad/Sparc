@@ -22,14 +22,13 @@ public sealed class SpscArrayPump : TwoThreadPump
     /// <summary>
     /// Rounds the slot up to a cache line so adjacent slots do not share one.
     /// Tightly packed slots would make producer and consumer false-share, which
-    /// distorts small-message benchmarks.
+    /// distorts small-message benchmarks. Delegates to the Core policy so the
+    /// in-process pumps and the CLIs use identical geometry.
     /// </summary>
-    internal static int SlotSizeFor(int payloadSize)
-    {
-        int raw = payloadSize + RingBufferLayout.MessageHeaderSize;
-        int rounded = (raw + RingBufferLayout.CacheLineSize - 1) / RingBufferLayout.CacheLineSize * RingBufferLayout.CacheLineSize;
-        return Math.Max(RingBufferLayout.CacheLineSize, rounded);
-    }
+    internal static int SlotSizeFor(int payloadSize) =>
+        Math.Max(
+            RingBufferLayout.CacheLineSize,
+            RingBufferLayout.RoundSlotSizeToCacheLine(payloadSize + RingBufferLayout.MessageHeaderSize));
 }
 
 public sealed class SpscSharedMemoryPump : TwoThreadPump

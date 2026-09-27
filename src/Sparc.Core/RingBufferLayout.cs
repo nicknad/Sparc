@@ -77,6 +77,24 @@ public static class RingBufferLayout
     /// <summary>Maximum payload for a slot, given the slot size.</summary>
     public static int MaxPayloadSizeFor(int slotSize) => slotSize - MessageHeaderSize;
 
+    /// <summary>
+    /// Rounds a slot size up to a multiple of <see cref="CacheLineSize"/>.
+    /// </summary>
+    /// <remarks>
+    /// Slots start at <see cref="HeaderSize"/> (cache-line aligned). When the
+    /// slot size is not a multiple of the cache line, the last line of one slot
+    /// and the first line of the next share a line; with a full ring the
+    /// producer writes slot N while the consumer reads slot N+1, so that shared
+    /// line bounces between the two cores. Aligning the slot size keeps every
+    /// slot boundary on a line boundary.
+    /// </remarks>
+    public static int RoundSlotSizeToCacheLine(int slotSize)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(slotSize, 1);
+        long rounded = ((long)slotSize + CacheLineSize - 1) / CacheLineSize * CacheLineSize;
+        return checked((int)rounded);
+    }
+
     /// <summary>Total bytes required for a region with the given geometry.</summary>
     public static long RequiredSize(int capacity, int slotSize) =>
         checked(HeaderSize + (long)capacity * slotSize);

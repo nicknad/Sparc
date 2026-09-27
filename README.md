@@ -120,6 +120,9 @@ latency(us): min=1.20 mean=122.44 p50=51.20 p90=102.40 p95=204.80 p99=409.60 p99
 
 `--count 0` on the consumer means "consume until the producer stops".
 `--size` is the payload size; layout is `[sequence:int64][timestamp:int64][fill…]` (min 16 bytes).
+A slot size derived from `--size` is rounded up to a 64-byte cache line (pass `--slot-size`
+to override); this keeps slot boundaries on cache-line boundaries so adjacent slots never
+share one.
 `--delay-us` inserts a pause between messages on that endpoint (slow-producer/backpressure
 simulation for tests and benchmark scenarios; 0 = off). The CLIs select the transport by OS:
 named memory-mapped files on Windows, file-backed regions elsewhere. `Ctrl+C` cancels the
@@ -402,9 +405,11 @@ Each slot:
   ends).
 * `HeaderSize = 192` is cache-line aligned, so slot starts stay aligned when `SlotSize`
   is a multiple of 64 (the default 256 is).
-* Benchmarks intentionally round slot sizes up to a cache line: tightly packed small slots
-  make the producer's writes and the consumer's reads **false-share** and can slow a buffer
-  down several-fold. This is visible in the project's own perf experiments.
+* Slot sizes derived from a payload size are rounded up to a cache line, in the CLIs and in
+  the benchmark pumps alike: tightly packed small slots make the producer's writes and the
+  consumer's reads **false-share** and can slow a buffer down several-fold. The sweep also
+  reports the region footprint, because a bigger ring leaves the CPU caches and the measured
+  cost per byte then includes a DRAM round trip (see §6).
 
 Region size is exactly `192 + Capacity × SlotSize` bytes (1024 × 256 → 262,336 bytes).
 
