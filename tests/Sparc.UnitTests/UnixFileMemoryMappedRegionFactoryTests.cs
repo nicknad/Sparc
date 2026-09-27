@@ -52,6 +52,36 @@ public class UnixFileMemoryMappedRegionFactoryTests
     }
 
     [Fact]
+    public void RegionFilesAndDirectoryAreOwnerOnly()
+    {
+        UnixFileMemoryMappedRegionFactory factory = NewFactory(out string directory);
+        Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            string name = NewName();
+            using (factory.CreateOrOpen(name, 4096))
+            {
+            }
+
+            const UnixFileMode OtherBits =
+                UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
+                UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
+
+            Assert.Equal(UnixFileMode.None, File.GetUnixFileMode(factory.DirectoryPath) & OtherBits);
+            Assert.Equal(UnixFileMode.None, File.GetUnixFileMode(Path.Combine(factory.DirectoryPath, name)) & OtherBits);
+        }
+        finally
+        {
+            Cleanup(directory);
+        }
+    }
+
+    [Fact]
     public void TryResetUnlinksTheBackingFile()
     {
         UnixFileMemoryMappedRegionFactory factory = NewFactory(out string directory);

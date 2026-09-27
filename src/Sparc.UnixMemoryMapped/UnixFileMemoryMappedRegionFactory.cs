@@ -50,8 +50,24 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
             ? Path.Combine(Path.GetTempPath(), "sparc")
             : Path.GetFullPath(directory);
 
-        Directory.CreateDirectory(DirectoryPath);
+        if (OperatingSystem.IsWindows())
+        {
+            Directory.CreateDirectory(DirectoryPath);
+        }
+        else
+        {
+            // 0700: region files carry process data, so group/other access is
+            // removed when the directory is created. An existing directory keeps
+            // whatever mode its owner chose.
+            Directory.CreateDirectory(DirectoryPath, OwnerOnlyDirectoryMode);
+        }
     }
+
+    private const UnixFileMode OwnerOnlyDirectoryMode =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+
+    private const UnixFileMode OwnerOnlyFileMode =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite;
 
     /// <summary>Directory that holds one backing file per region.</summary>
     public string DirectoryPath { get; }
@@ -121,14 +137,39 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
 
     private static MemoryMappedFile CreateNew(string path, long size)
     {
-        // CreateNew is atomic, and the following SetLength publishes the final
-        // length in one step, so an opener never maps a half-sized file.
-        using (FileStream stream = new(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
+        FileStreamOptions options = new()
         {
-            stream.SetLength(size);
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.ReadWrite,
+            Share = FileShare.ReadWrite,
+        };
+        if (!OperatingSystem.IsWindows())
+        {
+            options.UnixCreateMode = OwnerOnlyFileMode;
         }
 
-        return MapFile(path);
+        FileStream stream = new(path, options);
+        try
+        {
+            // CreateNew is atomic, and SetLength publishes the final length in
+            // one step, so an opener never maps a half-sized file. Mapping from
+            // this handle (instead of reopening the path) closes the window in
+            // which another process could unlink or replace the file between
+            // creation and mapping.
+            stream.SetLength(size);
+            return MemoryMappedFile.CreateFromFile(
+                stream,
+                mapName: null,
+                capacity: 0,
+                MemoryMappedFileAccess.ReadWrite,
+                HandleInheritability.None,
+                leaveOpen: false);
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
     }
 
     private static MemoryMappedFile OpenExistingWithTimeout(
