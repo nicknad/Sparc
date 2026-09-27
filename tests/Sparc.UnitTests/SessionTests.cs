@@ -271,6 +271,61 @@ public class SessionTests
     }
 
     [Fact]
+    public async Task SpinOnlySessionsComplete()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64);
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64);
+
+        ConsumerSession consumer = new(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 5_000,
+            IdleTimeout = TimeSpan.FromSeconds(10),
+            WaitMode = SessionWaitMode.SpinOnly,
+        });
+
+        Task<ConsumerRunResult> consumerTask = Task.Run(
+            () => consumer.Run(TestContext.Current.CancellationToken),
+            TestContext.Current.CancellationToken);
+
+        ProducerRunResult producerResult = new ProducerSession(producerBuffer, new ProducerSessionOptions
+        {
+            Count = 5_000,
+            PayloadSize = 32,
+            FullTimeout = TimeSpan.FromSeconds(10),
+            WaitMode = SessionWaitMode.SpinOnly,
+        }).Run(TestContext.Current.CancellationToken);
+
+        ConsumerRunResult consumerResult = await consumerTask;
+
+        Assert.Equal(SessionStopReason.Completed, producerResult.Reason);
+        Assert.Equal(5_000, producerResult.Produced);
+        Assert.Equal(SessionStopReason.Completed, consumerResult.Reason);
+        Assert.Equal(5_000, consumerResult.Received);
+    }
+
+    [Fact]
+    public void SpinOnlyConsumerStillTimesOutWhenIdle()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
+        producerBuffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
+        ConsumerRunResult result = new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 0,
+            IdleTimeout = TimeSpan.FromMilliseconds(150),
+            WaitMode = SessionWaitMode.SpinOnly,
+        }).Run(TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.Timeout, result.Reason);
+        Assert.Equal(0, result.Received);
+    }
+
+    [Fact]
     public void SessionsRejectNegativePacing()
     {
         InMemoryMemoryRegionFactory factory = new();

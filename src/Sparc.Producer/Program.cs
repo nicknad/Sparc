@@ -85,6 +85,7 @@ internal static class Program
             FullTimeout = options.FullTimeout,
             PerMessageDelay = options.Delay,
             Takeover = options.Takeover,
+            WaitMode = options.SpinOnly ? SessionWaitMode.SpinOnly : SessionWaitMode.SpinThenSleep,
         });
 
         ProducerRunResult result = session.Run(cancellation.Token);

@@ -87,6 +87,7 @@ internal static class Program
             IdleTimeout = options.IdleTimeout,
             PerMessageDelay = options.Delay,
             Takeover = options.Takeover,
+            WaitMode = options.SpinOnly ? SessionWaitMode.SpinOnly : SessionWaitMode.SpinThenSleep,
         });
 
         ConsumerRunResult result = session.Run(cancellation.Token);

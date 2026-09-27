@@ -49,6 +49,7 @@ internal static class LatencyRunner
         int consumerDelayUs = 0;
         bool verify = true;
         bool verifyPayload = true;
+        bool spinOnly = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -85,6 +86,9 @@ internal static class LatencyRunner
                 case "--no-verify-payload":
                     verifyPayload = false;
                     break;
+                case "--spin-only":
+                    spinOnly = true;
+                    break;
                 case "--producer-delay-us":
                     producerDelayUs = int.Parse(args[++i], CultureInfo.InvariantCulture);
                     break;
@@ -105,13 +109,14 @@ internal static class LatencyRunner
 
             ArgumentOutOfRangeException.ThrowIfLessThan(repeats, 1);
             RunCrossProcessSweep(
-                sizes, count, repeats, capacity, slotSize, producerDelayUs, consumerDelayUs, verify, verifyPayload);
+                sizes, count, repeats, capacity, slotSize, producerDelayUs, consumerDelayUs, verify, verifyPayload, spinOnly);
             return;
         }
 
         if (transport is "shared-xproc")
         {
-            RunCrossProcess(size, count, capacity, slotSize, producerDelayUs, consumerDelayUs, verify, verifyPayload, echo: true);
+            RunCrossProcess(
+                size, count, capacity, slotSize, producerDelayUs, consumerDelayUs, verify, verifyPayload, spinOnly, echo: true);
             return;
         }
 
@@ -159,7 +164,8 @@ internal static class LatencyRunner
         int producerDelayUs,
         int consumerDelayUs,
         bool verify,
-        bool verifyPayload)
+        bool verifyPayload,
+        bool spinOnly)
     {
         Console.WriteLine(
             $"transport=shared-xproc sweep sizes=[{string.Join(", ", sizes.Select(FormatSize))}] " +
@@ -167,7 +173,8 @@ internal static class LatencyRunner
             (slotSize > 0 ? $"slotSize={slotSize}" : "slotSize=auto") +
             (producerDelayUs > 0 ? $" producer-delay={producerDelayUs}us" : string.Empty) +
             (consumerDelayUs > 0 ? $" consumer-delay={consumerDelayUs}us" : string.Empty) +
-            (!verify ? " verify=off" : !verifyPayload ? " payloadScan=off" : string.Empty));
+            (!verify ? " verify=off" : !verifyPayload ? " payloadScan=off" : string.Empty) +
+            (spinOnly ? " spin-only" : string.Empty));
         Console.WriteLine();
 
         // Round-robin over sizes so every size sees the same machine conditions;
@@ -178,7 +185,7 @@ internal static class LatencyRunner
             for (int i = 0; i < sizes.Length; i++)
             {
                 CrossProcessRun run = RunCrossProcess(
-                    sizes[i], count, capacity, slotSize, producerDelayUs, consumerDelayUs, verify, verifyPayload, echo: false)
+                    sizes[i], count, capacity, slotSize, producerDelayUs, consumerDelayUs, verify, verifyPayload, spinOnly, echo: false)
                     ?? throw new InvalidOperationException($"Run for size {sizes[i]} did not complete.");
                 runsBySize[i].Add(run);
 
@@ -239,6 +246,7 @@ internal static class LatencyRunner
         int consumerDelayUs,
         bool verify,
         bool verifyPayload,
+        bool spinOnly,
         bool echo)
     {
         string name = "spsc-latency-" + Guid.NewGuid().ToString("N");
@@ -280,6 +288,12 @@ internal static class LatencyRunner
         else if (!verifyPayload)
         {
             consumerArgs.Add("--no-verify-payload");
+        }
+
+        if (spinOnly)
+        {
+            producerArgs.Add("--spin-only");
+            consumerArgs.Add("--spin-only");
         }
 
         // The producer goes first: it defines the geometry (the consumer adopts it).

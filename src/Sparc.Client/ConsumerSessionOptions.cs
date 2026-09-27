@@ -34,6 +34,13 @@ public sealed class ConsumerSessionOptions
 
     /// <summary>Claim the consumer role from a crashed peer.</summary>
     public bool Takeover { get; init; }
+
+    /// <summary>
+    /// How to wait while the buffer stays empty. <see cref="SessionWaitMode.SpinOnly"/>
+    /// removes the millisecond sleep granularity at the cost of a busy core; it
+    /// is the mode to pick for the lowest one-way latency.
+    /// </summary>
+    public SessionWaitMode WaitMode { get; init; } = SessionWaitMode.SpinThenSleep;
 }
 
 /// <summary>Progress notification emitted every ~10% of the requested count.</summary>

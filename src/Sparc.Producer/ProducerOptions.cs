@@ -18,6 +18,7 @@ internal sealed class ProducerOptions
     public TimeSpan FullTimeout { get; private set; } = TimeSpan.FromSeconds(30);
     public TimeSpan Delay { get; private set; }
     public bool Takeover { get; private set; }
+    public bool SpinOnly { get; private set; }
     public bool RecreateStale { get; private set; }
     public bool RequireExisting { get; private set; }
     public bool Quiet { get; private set; }
@@ -50,6 +51,7 @@ internal sealed class ProducerOptions
           --full-timeout <ms>      Abort if the buffer stays full this long (default: 30000).
           --delay-us <us>          Pause between published messages (slow-producer simulation, default: 0).
           --takeover               Claim the producer role from a crashed peer.
+          --spin-only              Busy-spin instead of sleeping while the buffer is full.
           --recreate-stale         Delete and recreate an incompatible/stale region (destructive).
           --require-existing       Never create the region; fail if it does not exist.
           --quiet                  Suppress progress output.
@@ -102,6 +104,9 @@ internal sealed class ProducerOptions
                     break;
                 case "--takeover":
                     options.Takeover = true;
+                    break;
+                case "--spin-only":
+                    options.SpinOnly = true;
                     break;
                 case "--recreate-stale":
                     options.RecreateStale = true;

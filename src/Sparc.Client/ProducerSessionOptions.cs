@@ -27,6 +27,12 @@ public sealed class ProducerSessionOptions
     /// <summary>Claim the producer role from a crashed peer.</summary>
     public bool Takeover { get; init; }
 
+    /// <summary>
+    /// How to wait while the buffer stays full. <see cref="SessionWaitMode.SpinOnly"/>
+    /// removes the millisecond sleep granularity at the cost of a busy core.
+    /// </summary>
+    public SessionWaitMode WaitMode { get; init; } = SessionWaitMode.SpinThenSleep;
+
     internal void Validate(int maxPayloadSize)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(Count, 1);

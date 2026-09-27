@@ -120,7 +120,7 @@ public sealed class ConsumerSession
                 break;
             }
 
-            spin.SpinOnce();
+            WaitWhileEmpty(ref spin);
         }
 
         TimeSpan elapsed = ComputeElapsed(state, runStartTimestamp);
@@ -250,6 +250,18 @@ public sealed class ConsumerSession
         state.Received > 1 && state.FirstMessageTimestamp != 0
             ? _timeProvider.GetElapsedTime(state.FirstMessageTimestamp, state.LastMessageTimestamp)
             : _timeProvider.GetElapsedTime(runStartTimestamp);
+
+    private void WaitWhileEmpty(ref SpinWait spin)
+    {
+        if (_options.WaitMode == SessionWaitMode.SpinOnly)
+        {
+            Thread.SpinWait(64);
+        }
+        else
+        {
+            spin.SpinOnce();
+        }
+    }
 
     private static ConsumerRunResult Cancelled() =>
         new(0, 0, TimeSpan.Zero, SessionStopReason.Cancelled, new LatencyHistogram(), null);

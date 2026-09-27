@@ -113,10 +113,10 @@ latency(us): min=1.20 mean=122.44 p50=51.20 p90=102.40 p95=204.80 p99=409.60 p99
 ### CLI
 
 `producer --name <name> [--count n] [--size bytes] [--capacity slots] [--slot-size bytes]`
-`[--type int] [--open-timeout ms] [--full-timeout ms] [--delay-us us] [--takeover] [--recreate-stale] [--require-existing] [--quiet]`
+`[--type int] [--open-timeout ms] [--full-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--recreate-stale] [--require-existing] [--quiet]`
 
 `consumer --name <name> [--count n] [--capacity slots] [--slot-size bytes] [--type int]`
-`[--open-timeout ms] [--idle-timeout ms] [--delay-us us] [--takeover] [--recreate-stale] [--require-existing] [--no-verify] [--quiet]`
+`[--open-timeout ms] [--idle-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--recreate-stale] [--require-existing] [--no-verify] [--no-verify-payload] [--quiet]`
 
 `--count 0` on the consumer means "consume until the producer stops".
 `--size` is the payload size; layout is `[sequence:int64][timestamp:int64][fill…]` (min 16 bytes).
@@ -595,8 +595,9 @@ Same harness with one endpoint paced (`--delay-us`); rates in msg/s, latencies i
   producer burns none.
 * **Producer << consumer**: the buffer stays empty and latency is the consumer's
   *idle-detection* latency — 5.1 ms p50 — because `SpinWait` yields and then sleeps rather
-  than busy-spinning. An OS notification (or an unbounded spin) would cut this to
-  microseconds at the cost of a pinned core. This is the number that matters most for
+  than busy-spinning. `--spin-only` (or `SessionWaitMode.SpinOnly`) replaces the sleep with
+  an unbounded spin: measured p50 drops from 6.45 ms to 3.9 µs on the same scenario, at the
+  cost of a busy core while the peer is idle. This is the number that matters most for
   telemetry consumers.
 * **Producer ≈ consumer**: throughput tracks the slower side, and latency sits at the queue
   operating point (the startup backlog fills the 1024-slot buffer before both ends settle).

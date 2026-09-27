@@ -17,6 +17,7 @@ internal sealed class ConsumerOptions
     public TimeSpan IdleTimeout { get; private set; } = TimeSpan.FromSeconds(5);
     public TimeSpan Delay { get; private set; }
     public bool Takeover { get; private set; }
+    public bool SpinOnly { get; private set; }
     public bool RecreateStale { get; private set; }
     public bool RequireExisting { get; private set; }
     public bool Verify { get; private set; } = true;
@@ -43,6 +44,7 @@ internal sealed class ConsumerOptions
           --idle-timeout <ms>      Abort when no messages arrive for this long (default: 5000).
           --delay-us <us>          Pause between consumed messages (slow-consumer/backpressure simulation, default: 0).
           --takeover               Claim the consumer role from a crashed peer.
+          --spin-only              Busy-spin instead of sleeping while the buffer is empty.
           --recreate-stale         Delete and recreate an incompatible/stale region (destructive).
           --require-existing       Never create the region; fail if it does not exist.
           --no-verify              Do not validate sequence numbers and type.
@@ -94,6 +96,9 @@ internal sealed class ConsumerOptions
                     break;
                 case "--takeover":
                     options.Takeover = true;
+                    break;
+                case "--spin-only":
+                    options.SpinOnly = true;
                     break;
                 case "--recreate-stale":
                     options.RecreateStale = true;

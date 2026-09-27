@@ -129,7 +129,7 @@ public sealed class ProducerSession
                 break;
             }
 
-            spin.SpinOnce();
+            WaitWhileFull(ref spin);
         }
 
         TimeSpan elapsed = _timeProvider.GetElapsedTime(startTimestamp);
@@ -151,5 +151,17 @@ public sealed class ProducerSession
         {
             ActiveElapsed = activeElapsed,
         };
+    }
+
+    private void WaitWhileFull(ref SpinWait spin)
+    {
+        if (_options.WaitMode == SessionWaitMode.SpinOnly)
+        {
+            Thread.SpinWait(64);
+        }
+        else
+        {
+            spin.SpinOnce();
+        }
     }
 }
