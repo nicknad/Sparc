@@ -52,7 +52,7 @@ public sealed class ConsumerSession
             return Cancelled();
         }
 
-        ReadState state = new(_buffer.MaxPayloadSize);
+        ReadState state = new();
         SpinWait spin = new();
         long idleSince = 0;
         long cancellationCounter = 0;
@@ -144,7 +144,9 @@ public sealed class ConsumerSession
     /// </summary>
     private int ProcessOne(ReadState state)
     {
-        if (!_buffer.TryRead(state.Destination, out int length, out int type))
+        // Zero copy: verify and sample straight out of the shared slot; the
+        // producer cannot reuse it until AdvanceRead publishes the new head.
+        if (!_buffer.TryPeek(out ReadOnlySpan<byte> payload, out int length, out int type))
         {
             return 0;
         }
@@ -153,10 +155,14 @@ public sealed class ConsumerSession
 
         if (_options.Verify)
         {
-            string? failure = Verify(state, length, type);
+            string? failure = Verify(state, payload, length, type);
             if (failure is not null)
             {
                 state.Failure = failure;
+
+                // Consume the invalid message (the copy path advanced head before
+                // verifying) so the session stops instead of re-reading it.
+                _buffer.AdvanceRead();
                 return -1;
             }
         }
@@ -166,12 +172,14 @@ public sealed class ConsumerSession
         // the caller disabled structural checks.
         if (length >= RingBufferMessage.HeaderSize)
         {
-            long sentTimestamp = RingBufferMessage.ReadTimestamp(state.Destination);
+            long sentTimestamp = RingBufferMessage.ReadTimestamp(payload);
             if (sentTimestamp > 0)
             {
                 state.Histogram.Record(now - sentTimestamp);
             }
         }
+
+        _buffer.AdvanceRead();
 
         state.Expected++;
         state.Received++;
@@ -186,14 +194,14 @@ public sealed class ConsumerSession
     }
 
     /// <summary>Returns a failure description, or null when the message is valid.</summary>
-    private string? Verify(ReadState state, int length, int type)
+    private string? Verify(ReadState state, ReadOnlySpan<byte> payload, int length, int type)
     {
         if (length < RingBufferMessage.HeaderSize)
         {
             return $"message {state.Received} is only {length} bytes.";
         }
 
-        long sequence = RingBufferMessage.ReadSequence(state.Destination);
+        long sequence = RingBufferMessage.ReadSequence(payload);
         if (sequence != state.Expected)
         {
             return $"sequence mismatch at message {state.Received}: expected {state.Expected}, received {sequence}.";
@@ -204,7 +212,7 @@ public sealed class ConsumerSession
             return $"message {state.Received} has type {type}, expected {_options.ExpectedType}.";
         }
 
-        if (_options.VerifyPayload && !RingBufferMessage.IsPayloadIntact(state.Destination, length))
+        if (_options.VerifyPayload && !RingBufferMessage.IsPayloadIntact(payload, length))
         {
             return $"message {state.Received} payload is corrupted.";
         }
@@ -247,10 +255,8 @@ public sealed class ConsumerSession
         new(0, 0, TimeSpan.Zero, SessionStopReason.Cancelled, new LatencyHistogram(), null);
 
     /// <summary>Mutable counters for one run, kept out of the main loop body.</summary>
-    private sealed class ReadState(int maxPayloadSize)
+    private sealed class ReadState
     {
-        public byte[] Destination { get; } = new byte[maxPayloadSize];
-
         public LatencyHistogram Histogram { get; } = new();
 
         public long Received { get; set; }

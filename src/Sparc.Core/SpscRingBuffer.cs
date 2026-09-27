@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -55,6 +56,15 @@ public sealed class SpscRingBuffer : IRingBuffer
     // cursor, so the worst case is a redundant refresh.
     private long _cachedHead; // producer-private
     private long _cachedTail; // consumer-private
+
+    // State for the zero-copy lease API. The producer and consumer contracts are
+    // single-threaded, so per-instance pending state is safe.
+    private long _pendingTail;
+    private int _pendingLength;
+    private int _pendingType;
+    private bool _hasPendingWrite;
+    private long _peekedHead;
+    private bool _hasPeekedRead;
 
     /// <summary>Creates a buffer with the project defaults (1024 slots × 256 bytes).</summary>
     public SpscRingBuffer()
@@ -188,6 +198,130 @@ public sealed class SpscRingBuffer : IRingBuffer
         return true;
     }
 
+    /// <inheritdoc />
+    public bool TryReserveWrite(int type, int length, out Span<byte> payload)
+    {
+        if (_hasPendingWrite)
+        {
+            throw new InvalidOperationException("A write reservation is already active.");
+        }
+
+        if ((uint)length > (uint)MaxPayloadSize)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(length), length,
+                $"Payload of {length} bytes exceeds the maximum of {MaxPayloadSize} bytes.");
+        }
+
+        long tail = _tail.Value;
+        long head = _cachedHead;
+        if (tail - head >= Capacity)
+        {
+            head = Volatile.Read(ref _head.Value);
+            _cachedHead = head;
+            if (tail - head >= Capacity)
+            {
+                payload = default;
+                return false; // full
+            }
+        }
+
+        Debug.Assert(tail >= head);
+        Debug.Assert(tail - head < Capacity);
+        int slotIndex = (int)(tail & _mask);
+        Debug.Assert((uint)slotIndex < (uint)Capacity);
+
+        payload = _buffer.AsSpan(slotIndex * SlotSize + RingBufferLayout.MessageHeaderSize, length);
+        _pendingTail = tail;
+        _pendingLength = length;
+        _pendingType = type;
+        _hasPendingWrite = true;
+        return true;
+    }
+
+    /// <inheritdoc />
+    public void CommitWrite()
+    {
+        if (!_hasPendingWrite)
+        {
+            throw new InvalidOperationException("No write reservation is active.");
+        }
+
+        _hasPendingWrite = false;
+        Span<byte> slot = _buffer.AsSpan((int)(_pendingTail & _mask) * SlotSize, SlotSize);
+        BinaryPrimitives.WriteInt32LittleEndian(slot, _pendingLength);
+        BinaryPrimitives.WriteInt32LittleEndian(slot[sizeof(int)..], _pendingType);
+
+        // Release: the caller's payload writes and the framing above must be
+        // visible before the consumer can observe the advanced tail.
+        Volatile.Write(ref _tail.Value, _pendingTail + 1);
+    }
+
+    /// <inheritdoc />
+    public void AbandonWrite()
+    {
+        if (!_hasPendingWrite)
+        {
+            throw new InvalidOperationException("No write reservation is active.");
+        }
+
+        _hasPendingWrite = false;
+    }
+
+    /// <inheritdoc />
+    public bool TryPeek(out ReadOnlySpan<byte> payload, out int length, out int type)
+    {
+        if (_hasPeekedRead)
+        {
+            throw new InvalidOperationException("A read view is already active.");
+        }
+
+        long head = _head.Value;
+        long tail = _cachedTail;
+        if (tail == head)
+        {
+            tail = Volatile.Read(ref _tail.Value);
+            _cachedTail = tail;
+            if (tail == head)
+            {
+                payload = default;
+                length = 0;
+                type = 0;
+                return false; // empty
+            }
+        }
+
+        Debug.Assert(tail > head);
+        ReadOnlySpan<byte> slot = _buffer.AsSpan((int)(head & _mask) * SlotSize, SlotSize);
+        length = BinaryPrimitives.ReadInt32LittleEndian(slot);
+        if ((uint)length > (uint)MaxPayloadSize)
+        {
+            throw new RingBufferCorruptedException(
+                $"Slot declares a payload of {length} bytes but only {MaxPayloadSize} are available.");
+        }
+
+        type = BinaryPrimitives.ReadInt32LittleEndian(slot[sizeof(int)..]);
+        payload = slot.Slice(RingBufferLayout.MessageHeaderSize, length);
+        _peekedHead = head;
+        _hasPeekedRead = true;
+        return true;
+    }
+
+    /// <inheritdoc />
+    public void AdvanceRead()
+    {
+        if (!_hasPeekedRead)
+        {
+            throw new InvalidOperationException("No read view is active.");
+        }
+
+        _hasPeekedRead = false;
+
+        // Release: publishes "slot consumed" to the producer once the caller is
+        // done with the view.
+        Volatile.Write(ref _head.Value, _peekedHead + 1);
+    }
+
     /// <summary>
     /// Blocking convenience wrapper: spins until the message fits or the caller
     /// cancels. For latency sensitive callers prefer
@@ -216,6 +350,8 @@ public sealed class SpscRingBuffer : IRingBuffer
         Volatile.Write(ref _tail.Value, 0);
         _cachedHead = 0;
         _cachedTail = 0;
+        _hasPendingWrite = false;
+        _hasPeekedRead = false;
     }
 
     /// <summary>A 64-byte-padded 64-bit field so two counters never share a cache line.</summary>

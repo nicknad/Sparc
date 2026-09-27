@@ -49,6 +49,46 @@ public interface IRingBuffer
     /// <param name="type">Type tag stored with the message.</param>
     bool TryRead(Span<byte> destination, out int bytesRead, out int type);
 
+    /// <summary>
+    /// Reserves the next slot and returns a writable view of its payload area,
+    /// so a producer can write a message without an intermediate copy. Call
+    /// <see cref="CommitWrite"/> to publish the message, or
+    /// <see cref="AbandonWrite"/> to leave the slot unpublished. Returns false
+    /// when the buffer is full.
+    /// </summary>
+    /// <param name="type">Type tag to store with the message.</param>
+    /// <param name="length">Payload bytes the caller will write (at most <see cref="MaxPayloadSize"/>).</param>
+    /// <param name="payload">Writable view of exactly <paramref name="length"/> bytes inside the reserved slot.</param>
+    /// <remarks>
+    /// The view is only valid until the reservation is committed or abandoned.
+    /// At most one reservation may be active at a time (the producer contract is
+    /// a single thread).
+    /// </remarks>
+    bool TryReserveWrite(int type, int length, out Span<byte> payload);
+
+    /// <summary>Publishes the slot reserved by <see cref="TryReserveWrite"/>.</summary>
+    void CommitWrite();
+
+    /// <summary>Discards the slot reserved by <see cref="TryReserveWrite"/> without publishing it.</summary>
+    void AbandonWrite();
+
+    /// <summary>
+    /// Returns a read-only view of the oldest published message without copying
+    /// it out. Call <see cref="AdvanceRead"/> when done with the view. Returns
+    /// false when the buffer is empty.
+    /// </summary>
+    /// <param name="payload">Read-only view of the payload, valid until <see cref="AdvanceRead"/>.</param>
+    /// <param name="length">Payload length in bytes.</param>
+    /// <param name="type">Type tag stored with the message.</param>
+    /// <remarks>
+    /// The producer cannot reuse the slot before <see cref="AdvanceRead"/> is
+    /// called, so the view stays valid for the duration of the processing.
+    /// </remarks>
+    bool TryPeek(out ReadOnlySpan<byte> payload, out int length, out int type);
+
+    /// <summary>Releases the slot returned by <see cref="TryPeek"/> to the producer.</summary>
+    void AdvanceRead();
+
     /// <summary>Convenience overload for messages that do not use a type tag.</summary>
     bool TryWrite(ReadOnlySpan<byte> payload) => TryWrite(0, payload);
 

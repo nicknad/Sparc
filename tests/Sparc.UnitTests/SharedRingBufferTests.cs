@@ -96,6 +96,93 @@ public class SharedRingBufferTests
     }
 
     [Fact]
+    public void LeaseWriteAndPeekRoundTripAcrossTwoViews()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        using SharedRingBuffer consumer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        producer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+        consumer.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
+
+        byte[] payload = "shared lease"u8.ToArray();
+        Assert.True(producer.TryReserveWrite(5, payload.Length, out Span<byte> slot));
+        payload.AsSpan().CopyTo(slot);
+        producer.CommitWrite();
+
+        Assert.True(consumer.TryPeek(out ReadOnlySpan<byte> peeked, out int length, out int type));
+        Assert.Equal(payload.Length, length);
+        Assert.Equal(5, type);
+        Assert.True(payload.AsSpan().SequenceEqual(peeked));
+        consumer.AdvanceRead();
+        Assert.True(consumer.IsEmpty);
+    }
+
+    [Fact]
+    public void LeaseAndCopyApisInteroperate()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        using SharedRingBuffer consumer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        producer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+        consumer.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Lease write -> copy read.
+        Assert.True(producer.TryReserveWrite(1, 4, out Span<byte> slot));
+        slot.Fill(0x2A);
+        producer.CommitWrite();
+        Span<byte> destination = new byte[consumer.MaxPayloadSize];
+        Assert.True(consumer.TryRead(destination, out int bytesRead, out int type));
+        Assert.Equal(4, bytesRead);
+        Assert.Equal(1, type);
+        Assert.True(destination[..bytesRead].IndexOfAnyExcept((byte)0x2A) < 0);
+
+        // Copy write -> peek read.
+        Assert.True(producer.TryWrite(2, new byte[] { 7, 7, 7 }));
+        Assert.True(consumer.TryPeek(out ReadOnlySpan<byte> peeked, out int length, out int peekedType));
+        Assert.Equal(3, length);
+        Assert.Equal(2, peekedType);
+        Assert.True(peeked.IndexOfAnyExcept((byte)7) < 0);
+        consumer.AdvanceRead();
+    }
+
+    [Fact]
+    public void LeaseReservationOnFullBufferReturnsFalse()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(factory, name, 2, 32);
+        buffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(buffer.TryReserveWrite(0, 4, out _));
+        buffer.CommitWrite();
+        Assert.True(buffer.TryReserveWrite(0, 4, out _));
+        buffer.CommitWrite();
+
+        Assert.False(buffer.TryReserveWrite(0, 4, out Span<byte> slot));
+        Assert.True(slot.IsEmpty);
+    }
+
+    [Fact]
+    public void LeaseStateMachinesRejectInvalidTransitions()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer buffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        buffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Throws<InvalidOperationException>(() => buffer.CommitWrite());
+        Assert.Throws<InvalidOperationException>(() => buffer.AbandonWrite());
+        Assert.Throws<InvalidOperationException>(() => buffer.AdvanceRead());
+
+        Assert.True(buffer.TryReserveWrite(0, 4, out _));
+        Assert.Throws<InvalidOperationException>(() => buffer.TryReserveWrite(0, 4, out _));
+        buffer.AbandonWrite();
+        Assert.Throws<ArgumentOutOfRangeException>(() => buffer.TryReserveWrite(0, buffer.MaxPayloadSize + 1, out _));
+    }
+
+    [Fact]
     public void RoleConflictIsRejectedUnlessTakeover()
     {
         InMemoryMemoryRegionFactory factory = new();

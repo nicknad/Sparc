@@ -171,6 +171,123 @@ public class SpscRingBufferTests
     }
 
     [Fact]
+    public void LeaseWriteRoundTripsThroughCopyRead()
+    {
+        SpscRingBuffer buffer = new(4, 64);
+        byte[] payload = "leased payload"u8.ToArray();
+
+        Assert.True(buffer.TryReserveWrite(42, payload.Length, out Span<byte> slot));
+        payload.AsSpan().CopyTo(slot);
+        buffer.CommitWrite();
+
+        Span<byte> destination = new byte[buffer.MaxPayloadSize];
+        Assert.True(buffer.TryRead(destination, out int bytesRead, out int type));
+        Assert.Equal(payload.Length, bytesRead);
+        Assert.Equal(42, type);
+        Assert.True(payload.AsSpan().SequenceEqual(destination[..bytesRead]));
+    }
+
+    [Fact]
+    public void CopyWriteRoundTripsThroughPeekRead()
+    {
+        SpscRingBuffer buffer = new(4, 64);
+        byte[] payload = [9, 8, 7];
+        Assert.True(buffer.TryWrite(3, payload));
+
+        Assert.True(buffer.TryPeek(out ReadOnlySpan<byte> peeked, out int length, out int type));
+        Assert.Equal(3, length);
+        Assert.Equal(3, type);
+        Assert.True(payload.AsSpan().SequenceEqual(peeked));
+
+        buffer.AdvanceRead();
+        Assert.True(buffer.IsEmpty);
+    }
+
+    [Fact]
+    public void AbandonedLeaseDoesNotPublish()
+    {
+        SpscRingBuffer buffer = new(4, 64);
+        Assert.True(buffer.TryReserveWrite(1, 4, out _));
+        buffer.AbandonWrite();
+        Assert.True(buffer.IsEmpty);
+
+        Assert.True(buffer.TryReserveWrite(2, 4, out Span<byte> slot));
+        slot.Fill(0x11);
+        buffer.CommitWrite();
+        Assert.Equal(1, buffer.Count);
+    }
+
+    [Fact]
+    public void LeaseReservationOnFullBufferReturnsFalse()
+    {
+        SpscRingBuffer buffer = new(2, 32);
+        Assert.True(buffer.TryReserveWrite(0, 4, out _));
+        buffer.CommitWrite();
+        Assert.True(buffer.TryReserveWrite(0, 4, out _));
+        buffer.CommitWrite();
+
+        Assert.False(buffer.TryReserveWrite(0, 4, out Span<byte> slot));
+        Assert.True(slot.IsEmpty);
+    }
+
+    [Fact]
+    public void LeaseStateMachinesRejectInvalidTransitions()
+    {
+        SpscRingBuffer buffer = new(4, 64);
+        Assert.Throws<InvalidOperationException>(() => buffer.CommitWrite());
+        Assert.Throws<InvalidOperationException>(() => buffer.AbandonWrite());
+        Assert.Throws<InvalidOperationException>(() => buffer.AdvanceRead());
+
+        Assert.True(buffer.TryReserveWrite(0, 4, out _));
+        Assert.Throws<InvalidOperationException>(() => buffer.TryReserveWrite(0, 4, out _));
+        buffer.CommitWrite();
+
+        Assert.True(buffer.TryPeek(out _, out _, out _));
+        Assert.Throws<InvalidOperationException>(() => buffer.TryPeek(out _, out _, out _));
+        buffer.AdvanceRead();
+    }
+
+    [Fact]
+    public void LeaseReserveRejectsOversizedPayload()
+    {
+        SpscRingBuffer buffer = new(4, 32);
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => buffer.TryReserveWrite(0, buffer.MaxPayloadSize + 1, out _));
+    }
+
+    [Fact]
+    public void LeaseWraparoundPreservesOrder()
+    {
+        const int capacity = 4;
+        SpscRingBuffer buffer = new(capacity, 32);
+
+        const int total = 10_000;
+        int sequence = 0;
+        int read = 0;
+
+        while (read < total)
+        {
+            for (int i = 0; i < capacity && sequence < total; i++, sequence++)
+            {
+                Assert.True(buffer.TryReserveWrite(sequence, sizeof(int), out Span<byte> slot));
+                BitConverter.TryWriteBytes(slot, sequence);
+                buffer.CommitWrite();
+            }
+
+            while (buffer.TryPeek(out ReadOnlySpan<byte> peeked, out int length, out int type))
+            {
+                Assert.Equal(sizeof(int), length);
+                Assert.Equal(read, type);
+                Assert.Equal(read, BitConverter.ToInt32(peeked));
+                buffer.AdvanceRead();
+                read++;
+            }
+        }
+
+        Assert.True(buffer.IsEmpty);
+    }
+
+    [Fact]
     public void BlockingWriteSucceedsWhenConsumerDrains()
     {
         SpscRingBuffer buffer = new(2, 32);

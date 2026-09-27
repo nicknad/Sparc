@@ -53,9 +53,6 @@ public sealed class ProducerSession
                 _options.Count, _buffer.ConsumerState, null);
         }
 
-        byte[] payload = new byte[_options.PayloadSize];
-        RingBufferMessage.FillPayload(payload);
-
         long fullTimeoutTicks = (long)(_options.FullTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
         long pacingTicks = MessagePacer.TicksFor(_timeProvider, _options.PerMessageDelay);
         long progressInterval = Math.Max(1, _options.Count / ProgressReports);
@@ -70,10 +67,14 @@ public sealed class ProducerSession
 
         while (produced < _options.Count)
         {
-            RingBufferMessage.Write(payload, produced, _timeProvider.GetTimestamp());
-
-            if (_buffer.TryWrite(_options.MessageType, payload))
+            // Zero copy: stamp the protocol header and fill inside the shared
+            // slot itself, then publish with one release store.
+            if (_buffer.TryReserveWrite(_options.MessageType, _options.PayloadSize, out Span<byte> slot))
             {
+                RingBufferMessage.Write(slot, produced, _timeProvider.GetTimestamp());
+                RingBufferMessage.FillPayload(slot);
+                _buffer.CommitWrite();
+
                 if (firstPublishTimestamp == 0)
                 {
                     firstPublishTimestamp = _timeProvider.GetTimestamp();
