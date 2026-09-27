@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Sparc.Benchmarks.Pumps;
+using Sparc.Core;
 
 namespace Sparc.Benchmarks;
 
@@ -25,6 +26,10 @@ internal static class LatencyRunner
         @"consumed=(?<count>\d+) bytes=(?<bytes>\d+) .* throughput=(?<throughput>\d+) msg/s dataThroughput=(?<mib>[\d.]+) MiB/s",
         RegexOptions.Compiled);
 
+    private static readonly Regex ProducerReadyPattern = new(
+        @"capacity=(?<capacity>\d+) slotSize=(?<slot>\d+)",
+        RegexOptions.Compiled);
+
     private static readonly Regex LatencyPattern = new(
         @"min=(?<min>[\d.]+) mean=(?<mean>[\d.]+) p50=(?<p50>[\d.]+) p90=(?<p90>[\d.]+) " +
         @"p95=(?<p95>[\d.]+) p99=(?<p99>[\d.]+) p99\.9=(?<p99_9>[\d.]+) max=(?<max>[\d.]+) " +
@@ -38,8 +43,12 @@ internal static class LatencyRunner
         long count = 200_000;
         int[]? sizes = null;
         int repeats = 1;
+        int capacity = RingBufferLayout.DefaultCapacity;
+        int slotSize = 0;
         int producerDelayUs = 0;
         int consumerDelayUs = 0;
+        bool verify = true;
+        bool verifyPayload = true;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -64,6 +73,18 @@ internal static class LatencyRunner
                 case "--repeats":
                     repeats = int.Parse(args[++i], CultureInfo.InvariantCulture);
                     break;
+                case "--capacity":
+                    capacity = int.Parse(args[++i], CultureInfo.InvariantCulture);
+                    break;
+                case "--slot-size":
+                    slotSize = int.Parse(args[++i], CultureInfo.InvariantCulture);
+                    break;
+                case "--no-verify":
+                    verify = false;
+                    break;
+                case "--no-verify-payload":
+                    verifyPayload = false;
+                    break;
                 case "--producer-delay-us":
                     producerDelayUs = int.Parse(args[++i], CultureInfo.InvariantCulture);
                     break;
@@ -83,13 +104,14 @@ internal static class LatencyRunner
             }
 
             ArgumentOutOfRangeException.ThrowIfLessThan(repeats, 1);
-            RunCrossProcessSweep(sizes, count, repeats, producerDelayUs, consumerDelayUs);
+            RunCrossProcessSweep(
+                sizes, count, repeats, capacity, slotSize, producerDelayUs, consumerDelayUs, verify, verifyPayload);
             return;
         }
 
         if (transport is "shared-xproc")
         {
-            RunCrossProcess(size, count, producerDelayUs, consumerDelayUs, echo: true);
+            RunCrossProcess(size, count, capacity, slotSize, producerDelayUs, consumerDelayUs, verify, verifyPayload, echo: true);
             return;
         }
 
@@ -128,46 +150,56 @@ internal static class LatencyRunner
         Console.WriteLine();
     }
 
-    private static void RunCrossProcessSweep(int[] sizes, long count, int repeats, int producerDelayUs, int consumerDelayUs)
+    private static void RunCrossProcessSweep(
+        int[] sizes,
+        long count,
+        int repeats,
+        int capacity,
+        int slotSize,
+        int producerDelayUs,
+        int consumerDelayUs,
+        bool verify,
+        bool verifyPayload)
     {
         Console.WriteLine(
             $"transport=shared-xproc sweep sizes=[{string.Join(", ", sizes.Select(FormatSize))}] " +
-            $"count={count} repeats={repeats}" +
+            $"count={count} repeats={repeats} capacity={capacity} " +
+            (slotSize > 0 ? $"slotSize={slotSize}" : "slotSize=auto") +
             (producerDelayUs > 0 ? $" producer-delay={producerDelayUs}us" : string.Empty) +
-            (consumerDelayUs > 0 ? $" consumer-delay={consumerDelayUs}us" : string.Empty));
+            (consumerDelayUs > 0 ? $" consumer-delay={consumerDelayUs}us" : string.Empty) +
+            (!verify ? " verify=off" : !verifyPayload ? " payloadScan=off" : string.Empty));
         Console.WriteLine();
 
-        List<CrossProcessRun> runs = [];
-        List<string> rows = [];
-        foreach (int size in sizes)
+        // Round-robin over sizes so every size sees the same machine conditions;
+        // running all repeats of one size back to back biases the last size.
+        List<CrossProcessRun>[] runsBySize = sizes.Select(_ => new List<CrossProcessRun>()).ToArray();
+        for (int round = 1; round <= repeats; round++)
         {
-            runs.Clear();
-
-            for (int repeat = 1; repeat <= repeats; repeat++)
+            for (int i = 0; i < sizes.Length; i++)
             {
-                CrossProcessRun run = RunCrossProcess(size, count, producerDelayUs, consumerDelayUs, echo: false)
-                    ?? throw new InvalidOperationException($"Run for size {size} did not complete.");
-                runs.Add(run);
+                CrossProcessRun run = RunCrossProcess(
+                    sizes[i], count, capacity, slotSize, producerDelayUs, consumerDelayUs, verify, verifyPayload, echo: false)
+                    ?? throw new InvalidOperationException($"Run for size {sizes[i]} did not complete.");
+                runsBySize[i].Add(run);
 
                 Console.WriteLine(
-                    $"  size={FormatSize(size),-6} run={repeat}/{repeats} " +
+                    $"  round={round}/{repeats} size={FormatSize(sizes[i]),-6} region={run.RegionMib,6:F1}MiB " +
                     $"producer={run.ProducerMsgPerSec,-12:N0} consumer={run.ConsumerMsgPerSec,-12:N0} msg/s " +
                     $"p50={run.Latency.P50:F2}us p99={run.Latency.P99:F2}us");
             }
-
-            rows.Add(FormatSweepRow(size, runs));
         }
 
         Console.WriteLine();
-        Console.WriteLine("| Message | Throughput  | Spread          | Data       | p50      | p90      | p95      | p99      | p99.9    | max        | CPU prod/cons |");
-        Console.WriteLine("|---------|-------------|-----------------|------------|----------|----------|----------|----------|----------|------------|---------------|");
-        foreach (string row in rows)
+        Console.WriteLine("| Message | Region    | Throughput  | Spread          | Data       | p50      | p90      | p95      | p99      | p99.9    | max        | CPU prod/cons |");
+        Console.WriteLine("|---------|-----------|-------------|-----------------|------------|----------|----------|----------|----------|----------|------------|---------------|");
+        for (int i = 0; i < sizes.Length; i++)
         {
-            Console.WriteLine(row);
+            Console.WriteLine(FormatSweepRow(sizes[i], runsBySize[i]));
         }
 
         Console.WriteLine();
         Console.WriteLine("Throughput is the consumer's; latencies are the median of each run's percentile; CPU is of one core.");
+        Console.WriteLine("Region = 192 + capacity x slotSize; throughput compares only at equal region size for cache-residency reasons.");
     }
 
     private static string FormatSweepRow(int size, List<CrossProcessRun> runs)
@@ -179,8 +211,11 @@ internal static class LatencyRunner
         double producerCpu = Median(runs.Select(r => r.ProducerCpuPercent));
         double consumerCpu = Median(runs.Select(r => r.ConsumerCpuPercent));
 
-        StringBuilder sb = new(240);
+        double regionMib = Median(runs.Select(r => r.RegionMib));
+
+        StringBuilder sb = new(260);
         sb.Append("| ").Append(FormatSize(size).PadRight(7));
+        sb.Append("| ").Append($"{regionMib:F1} MiB".PadRight(9));
         sb.Append("| ").Append(FormatCount(throughput).PadRight(10)).Append("msg/s ");
         sb.Append("| ").Append($"{FormatCount(throughputMin)}-{FormatCount(throughputMax)}".PadRight(15));
         sb.Append("| ").Append(data.ToString("F1", CultureInfo.InvariantCulture).PadLeft(8)).Append(" MiB/s ");
@@ -196,7 +231,15 @@ internal static class LatencyRunner
     }
 
     private static CrossProcessRun? RunCrossProcess(
-        int size, long count, int producerDelayUs, int consumerDelayUs, bool echo)
+        int size,
+        long count,
+        int capacity,
+        int slotSize,
+        int producerDelayUs,
+        int consumerDelayUs,
+        bool verify,
+        bool verifyPayload,
+        bool echo)
     {
         string name = "spsc-latency-" + Guid.NewGuid().ToString("N");
         string repoRoot = FindRepoRoot();
@@ -210,17 +253,39 @@ internal static class LatencyRunner
         string producerDll = Path.Combine(repoRoot, "src", "Sparc.Producer", "bin", configuration, "net11.0", "Sparc.Producer.dll");
         string consumerDll = Path.Combine(repoRoot, "src", "Sparc.Consumer", "bin", configuration, "net11.0", "Sparc.Consumer.dll");
 
-        // The producer goes first: it defines the geometry (the consumer adopts it).
-        using Process producer = StartProcess(
-            producerDll, repoRoot,
-            "--name", name, "--count", count.ToString(CultureInfo.InvariantCulture),
+        List<string> producerArgs =
+        [
+            "--name", name,
+            "--count", count.ToString(CultureInfo.InvariantCulture),
             "--size", size.ToString(CultureInfo.InvariantCulture),
-            "--delay-us", producerDelayUs.ToString(CultureInfo.InvariantCulture));
+            "--capacity", capacity.ToString(CultureInfo.InvariantCulture),
+            "--delay-us", producerDelayUs.ToString(CultureInfo.InvariantCulture),
+        ];
+        if (slotSize > 0)
+        {
+            producerArgs.Add("--slot-size");
+            producerArgs.Add(slotSize.ToString(CultureInfo.InvariantCulture));
+        }
+
+        List<string> consumerArgs =
+        [
+            "--name", name,
+            "--count", count.ToString(CultureInfo.InvariantCulture),
+            "--delay-us", consumerDelayUs.ToString(CultureInfo.InvariantCulture),
+        ];
+        if (!verify)
+        {
+            consumerArgs.Add("--no-verify");
+        }
+        else if (!verifyPayload)
+        {
+            consumerArgs.Add("--no-verify-payload");
+        }
+
+        // The producer goes first: it defines the geometry (the consumer adopts it).
+        using Process producer = StartProcess(producerDll, repoRoot, producerArgs.ToArray());
         Thread.Sleep(300);
-        using Process consumer = StartProcess(
-            consumerDll, repoRoot,
-            "--name", name, "--count", count.ToString(CultureInfo.InvariantCulture),
-            "--delay-us", consumerDelayUs.ToString(CultureInfo.InvariantCulture));
+        using Process consumer = StartProcess(consumerDll, repoRoot, consumerArgs.ToArray());
 
         Task<string> producerOut = producer.StandardOutput.ReadToEndAsync();
         Task<string> producerErr = producer.StandardError.ReadToEndAsync();
@@ -269,13 +334,13 @@ internal static class LatencyRunner
         }
 
         return new CrossProcessRun(
-            ParseProducerOutput(producerOut.Result),
+            ParseProducerOutput(producerOut.Result, capacity, slotSize, size),
             ParseConsumerOutput(consumerOut.Result),
             CpuPercent(producer),
             CpuPercent(consumer));
     }
 
-    private static ProducerSample ParseProducerOutput(string output)
+    private static ProducerSample ParseProducerOutput(string output, int capacity, int slotSize, int payloadSize)
     {
         Match match = ProducerPattern.Match(output);
         if (!match.Success)
@@ -283,10 +348,22 @@ internal static class LatencyRunner
             throw new InvalidOperationException($"Could not parse producer output:{Environment.NewLine}{output}");
         }
 
+        // The producer prints the geometry it actually created; fall back to the
+        // requested values if the line is missing (for example a quiet build).
+        Match ready = ProducerReadyPattern.Match(output);
+        int actualCapacity = ready.Success && int.TryParse(ready.Groups["capacity"].Value, out int parsedCapacity)
+            ? parsedCapacity
+            : capacity;
+        int actualSlotSize = ready.Success && int.TryParse(ready.Groups["slot"].Value, out int parsedSlot)
+            ? parsedSlot
+            : slotSize > 0 ? slotSize : Math.Max(RingBufferLayout.DefaultSlotSize, payloadSize + RingBufferLayout.MessageHeaderSize);
+
         return new ProducerSample(
             long.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture),
             double.Parse(match.Groups["throughput"].Value, CultureInfo.InvariantCulture),
-            double.Parse(match.Groups["mib"].Value, CultureInfo.InvariantCulture));
+            double.Parse(match.Groups["mib"].Value, CultureInfo.InvariantCulture),
+            actualCapacity,
+            actualSlotSize);
     }
 
     private static ConsumerSample ParseConsumerOutput(string output)
@@ -386,7 +463,7 @@ internal static class LatencyRunner
         throw new InvalidOperationException("Could not locate the repository root.");
     }
 
-    private readonly record struct ProducerSample(long Count, double MsgPerSec, double MibPerSec);
+    private readonly record struct ProducerSample(long Count, double MsgPerSec, double MibPerSec, int Capacity, int SlotSize);
 
     private readonly record struct ConsumerSample(long Count, double MsgPerSec, double MibPerSec, LatencyStats Latency);
 
@@ -403,5 +480,9 @@ internal static class LatencyRunner
         public double ConsumerMibPerSec => Consumer.MibPerSec;
 
         public LatencyStats Latency => Consumer.Latency;
+
+        /// <summary>Bytes of the shared region (header + all slots).</summary>
+        public double RegionMib =>
+            (RingBufferLayout.HeaderSize + Producer.Capacity * (double)Producer.SlotSize) / (1024 * 1024);
     }
 }

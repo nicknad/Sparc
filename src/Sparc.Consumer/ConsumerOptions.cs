@@ -20,6 +20,7 @@ internal sealed class ConsumerOptions
     public bool RecreateStale { get; private set; }
     public bool RequireExisting { get; private set; }
     public bool Verify { get; private set; } = true;
+    public bool VerifyPayload { get; private set; } = true;
     public bool Quiet { get; private set; }
     public bool ShowHelp { get; private set; }
 
@@ -44,7 +45,8 @@ internal sealed class ConsumerOptions
           --takeover               Claim the consumer role from a crashed peer.
           --recreate-stale         Delete and recreate an incompatible/stale region (destructive).
           --require-existing       Never create the region; fail if it does not exist.
-          --no-verify              Do not validate sequence numbers, type and payload fill.
+          --no-verify              Do not validate sequence numbers and type.
+          --no-verify-payload      Keep sequence/type checks, skip the payload fill scan.
           --quiet                  Suppress progress output.
           -h, --help               Show this help.
 
@@ -101,6 +103,9 @@ internal sealed class ConsumerOptions
                     break;
                 case "--no-verify":
                     options.Verify = false;
+                    break;
+                case "--no-verify-payload":
+                    options.VerifyPayload = false;
                     break;
                 case "--quiet":
                     options.Quiet = true;

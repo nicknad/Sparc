@@ -40,12 +40,15 @@ public class SessionTests
         Assert.Equal(10_000, producerResult.Produced);
         Assert.Equal(0, producerResult.Unsent);
         Assert.Null(producerResult.FailureMessage);
+        Assert.True(producerResult.ActiveElapsed > TimeSpan.Zero);
+        Assert.True(producerResult.ActiveElapsed <= producerResult.Elapsed);
 
         Assert.Equal(SessionStopReason.Completed, consumerResult.Reason);
         Assert.Equal(10_000, consumerResult.Received);
         Assert.Equal(10_000 * 32, consumerResult.ReceivedBytes);
         Assert.Null(consumerResult.FailureMessage);
         Assert.Equal(10_000, consumerResult.Latency.Count);
+        Assert.True(consumerResult.RunElapsed >= consumerResult.Elapsed);
     }
 
     [Fact]
@@ -114,6 +117,73 @@ public class SessionTests
         Assert.Equal(SessionStopReason.VerificationFailed, result.Reason);
         Assert.Contains("sequence mismatch", result.FailureMessage, StringComparison.Ordinal);
         Assert.Equal(0, result.Received);
+    }
+
+    [Fact]
+    public void ConsumerReportsCorruptedPayloadByDefault()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        producerBuffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(producerBuffer.TryWrite(1, CorruptedPayload()));
+
+        ConsumerRunResult result = new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 1,
+            IdleTimeout = TimeSpan.FromMilliseconds(200),
+        }).Run(TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.VerificationFailed, result.Reason);
+        Assert.Contains("payload is corrupted", result.FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ConsumerCanSkipThePayloadScan()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        producerBuffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(producerBuffer.TryWrite(1, CorruptedPayload()));
+
+        ConsumerRunResult result = new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 1,
+            VerifyPayload = false,
+            IdleTimeout = TimeSpan.FromMilliseconds(200),
+        }).Run(TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.Completed, result.Reason);
+        Assert.Equal(1, result.Received);
+        Assert.Equal(1, result.Latency.Count);
+    }
+
+    [Fact]
+    public void ConsumerSamplesLatencyWithoutVerification()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        producerBuffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(producerBuffer.TryWrite(1, CorruptedPayload()));
+
+        ConsumerRunResult result = new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 1,
+            Verify = false,
+            IdleTimeout = TimeSpan.FromMilliseconds(200),
+        }).Run(TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.Completed, result.Reason);
+        Assert.Equal(1, result.Received);
+        Assert.Equal(1, result.Latency.Count);
     }
 
     [Fact]
@@ -238,5 +308,14 @@ public class SessionTests
         }).Run(cancellation.Token);
 
         Assert.Equal(SessionStopReason.Cancelled, result.Reason);
+    }
+
+    /// <summary>A structurally valid session message whose payload is not the fill pattern.</summary>
+    private static byte[] CorruptedPayload()
+    {
+        byte[] payload = new byte[32];
+        RingBufferMessage.Write(payload, sequence: 0, Stopwatch.GetTimestamp());
+        payload.AsSpan(RingBufferMessage.HeaderSize).Fill(0x00);
+        return payload;
     }
 }

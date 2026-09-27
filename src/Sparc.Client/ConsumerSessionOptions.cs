@@ -11,8 +11,16 @@ public sealed class ConsumerSessionOptions
     /// <summary>Expected type tag.</summary>
     public int ExpectedType { get; init; } = 1;
 
-    /// <summary>Validate sequence numbers, type and payload fill bytes.</summary>
+    /// <summary>Validate sequence numbers and the message type.</summary>
     public bool Verify { get; init; } = true;
+
+    /// <summary>
+    /// Scan every payload for the fill pattern. Only has an effect when
+    /// <see cref="Verify"/> is true. Disable to isolate the O(payload) scan
+    /// from the transfer cost (benchmarks, throughput tuning); sequence and
+    /// type checks still run.
+    /// </summary>
+    public bool VerifyPayload { get; init; } = true;
 
     /// <summary>Give up when no messages arrive for this long.</summary>
     public TimeSpan IdleTimeout { get; init; } = TimeSpan.FromSeconds(5);
@@ -38,4 +46,12 @@ public readonly record struct ConsumerRunResult(
     TimeSpan Elapsed,
     SessionStopReason Reason,
     LatencyHistogram Latency,
-    string? FailureMessage);
+    string? FailureMessage)
+{
+    /// <summary>
+    /// Wall-clock time from the start of <c>Run</c> to its end, including
+    /// waiting for the first message. <see cref="Elapsed"/> is the narrower
+    /// first-to-last-message window used for the stream rate.
+    /// </summary>
+    public TimeSpan RunElapsed { get; init; }
+}

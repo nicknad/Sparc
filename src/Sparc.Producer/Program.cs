@@ -109,12 +109,16 @@ internal static class Program
 
     private static void PrintSummary(ProducerRunResult result)
     {
-        double seconds = result.Elapsed.TotalSeconds;
+        // The send rate uses the active window (first publish to end); the total
+        // elapsed time also contains waiting for the consumer to attach.
+        TimeSpan active = result.ActiveElapsed > TimeSpan.Zero ? result.ActiveElapsed : result.Elapsed;
+        double seconds = active.TotalSeconds;
         double messagesPerSecond = seconds > 0 ? result.Produced / seconds : 0;
         double megabytesPerSecond = messagesPerSecond * result.PayloadSize / (1024.0 * 1024.0);
 
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"produced={result.Produced} payloadSize={result.PayloadSize} elapsed={seconds:F3}s " +
+            $"produced={result.Produced} payloadSize={result.PayloadSize} elapsed={result.Elapsed.TotalSeconds:F3}s " +
+            $"activeElapsed={result.ActiveElapsed.TotalSeconds:F3}s " +
             $"throughput={messagesPerSecond:F0} msg/s dataThroughput={megabytesPerSecond:F1} MiB/s"));
     }
 }

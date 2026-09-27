@@ -52,4 +52,13 @@ public readonly record struct ProducerRunResult(
     SessionStopReason Reason,
     long Unsent,
     RingBufferEndpointState PeerState,
-    string? FailureMessage);
+    string? FailureMessage)
+{
+    /// <summary>
+    /// Time from the first successfully published message to the end of the
+    /// run. Excludes waiting for the peer to attach, so this is the window a
+    /// send-rate number should use. <see cref="TimeSpan.Zero"/> when nothing
+    /// was published.
+    /// </summary>
+    public TimeSpan ActiveElapsed { get; init; }
+}

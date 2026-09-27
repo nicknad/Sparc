@@ -124,13 +124,17 @@ public sealed class ConsumerSession
         }
 
         TimeSpan elapsed = ComputeElapsed(state, runStartTimestamp);
+        TimeSpan runElapsed = _timeProvider.GetElapsedTime(runStartTimestamp);
 
         _logger.LogDebug(
-            "Consumer session finished: received={Received} reason={Reason} elapsed={Elapsed}",
-            state.Received, reason, elapsed);
+            "Consumer session finished: received={Received} reason={Reason} elapsed={Elapsed} runElapsed={RunElapsed}",
+            state.Received, reason, elapsed, runElapsed);
 
         return new ConsumerRunResult(
-            state.Received, state.ReceivedBytes, elapsed, reason, state.Histogram, state.Failure);
+            state.Received, state.ReceivedBytes, elapsed, reason, state.Histogram, state.Failure)
+        {
+            RunElapsed = runElapsed,
+        };
     }
 
     /// <summary>
@@ -155,7 +159,13 @@ public sealed class ConsumerSession
                 state.Failure = failure;
                 return -1;
             }
+        }
 
+        // Latency sampling is independent of verification: the producer session
+        // always stamps sequence and timestamp, so the sample is valid even when
+        // the caller disabled structural checks.
+        if (length >= RingBufferMessage.HeaderSize)
+        {
             long sentTimestamp = RingBufferMessage.ReadTimestamp(state.Destination);
             if (sentTimestamp > 0)
             {
@@ -194,7 +204,7 @@ public sealed class ConsumerSession
             return $"message {state.Received} has type {type}, expected {_options.ExpectedType}.";
         }
 
-        if (!RingBufferMessage.IsPayloadIntact(state.Destination, length))
+        if (_options.VerifyPayload && !RingBufferMessage.IsPayloadIntact(state.Destination, length))
         {
             return $"message {state.Received} payload is corrupted.";
         }

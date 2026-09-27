@@ -83,6 +83,7 @@ internal static class Program
             Count = options.Count,
             ExpectedType = options.Type,
             Verify = options.Verify,
+            VerifyPayload = options.VerifyPayload,
             IdleTimeout = options.IdleTimeout,
             PerMessageDelay = options.Delay,
             Takeover = options.Takeover,
@@ -117,7 +118,8 @@ internal static class Program
 
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
             $"consumed={result.Received} bytes={result.ReceivedBytes} elapsed={seconds:F3}s " +
-            $"throughput={messagesPerSecond:F0} msg/s dataThroughput={megabytesPerSecond:F1} MiB/s"));
+            $"throughput={messagesPerSecond:F0} msg/s dataThroughput={megabytesPerSecond:F1} MiB/s " +
+            $"wallElapsed={result.RunElapsed.TotalSeconds:F3}s"));
         Console.WriteLine($"producer={buffer.ProducerState} consumer={buffer.ConsumerState}");
         Console.WriteLine(result.Latency.ToMicrosecondsReport(TimeProvider.System.TimestampFrequency));
     }

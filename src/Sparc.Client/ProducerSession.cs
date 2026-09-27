@@ -66,6 +66,7 @@ public sealed class ProducerSession
         SessionStopReason reason = SessionStopReason.Completed;
         string? failure = null;
         long startTimestamp = _timeProvider.GetTimestamp();
+        long firstPublishTimestamp = 0;
 
         while (produced < _options.Count)
         {
@@ -73,6 +74,11 @@ public sealed class ProducerSession
 
             if (_buffer.TryWrite(_options.MessageType, payload))
             {
+                if (firstPublishTimestamp == 0)
+                {
+                    firstPublishTimestamp = _timeProvider.GetTimestamp();
+                }
+
                 produced++;
                 fullSince = 0;
                 spin.Reset();
@@ -126,9 +132,12 @@ public sealed class ProducerSession
         }
 
         TimeSpan elapsed = _timeProvider.GetElapsedTime(startTimestamp);
+        TimeSpan activeElapsed = firstPublishTimestamp == 0
+            ? TimeSpan.Zero
+            : _timeProvider.GetElapsedTime(firstPublishTimestamp);
         _logger.LogDebug(
-            "Producer session finished: produced={Produced} reason={Reason} elapsed={Elapsed}",
-            produced, reason, elapsed);
+            "Producer session finished: produced={Produced} reason={Reason} elapsed={Elapsed} activeElapsed={ActiveElapsed}",
+            produced, reason, elapsed, activeElapsed);
 
         return new ProducerRunResult(
             produced,
@@ -137,6 +146,9 @@ public sealed class ProducerSession
             reason,
             _options.Count - produced,
             _buffer.ConsumerState,
-            failure);
+            failure)
+        {
+            ActiveElapsed = activeElapsed,
+        };
     }
 }
