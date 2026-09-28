@@ -34,6 +34,46 @@ int length = reader.ReadMessage(destination, out int type);
 `TryReserveWrite(type, out Span<byte> payload)` reserves the full payload
 window, and `CommitWrite(length)` publishes only the bytes actually used.
 
+## Zero-copy reads
+
+`SparcStreamReader.BeginMessage(scratch)` (or `TryBeginMessage` for the
+non-blocking form) hands out a `SparcStreamReadBuffer` that streams the
+message bytes with no destination copy:
+
+```csharp
+Span<byte> scratch = stackalloc byte[512];   // for stitched windows
+SparcStreamReadBuffer buffer = reader.BeginMessage(scratch);
+try
+{
+    while (!buffer.IsMessageComplete)
+    {
+        ReadOnlySpan<byte> span = buffer.GetUnreadSpan();
+        Consume(span);
+        buffer.Advance(span.Length);
+    }
+}
+finally
+{
+    buffer.Dispose();
+}
+```
+
+* `GetUnreadSpan` returns the current chunk's remainder (or unconsumed stitched
+  bytes) and waits for the next chunk when the current one is exhausted; it is
+  empty only at the end of the message.
+* `TryGetSpan(sizeHint, out span)` stitches chunk seams into `scratch` for a
+  contiguous window and returns false only when the message ends first;
+  `sizeHint` must fit `scratch` or it throws.
+* `CopyTo(destination)` copies without consuming, also across seams, and throws
+  when the message has fewer bytes left.
+* `Dispose` before the end abandons the tail; the next message then starts at
+  the next `First` chunk.
+* It is deliberately not a SerializerFoundation `IReadBuffer`:
+  `BytesRemaining` cannot be known before the last chunk has arrived, and the
+  endpoint allows one active lease at a time. A producer that restarts
+  mid-message is reported as `RingBufferCorruptedException`; use `ReadMessage`
+  when you need restart-resilient reads.
+
 ## Wire format
 
 Each chunk payload is `[int32 flags][data...]`, little-endian; the ring's own

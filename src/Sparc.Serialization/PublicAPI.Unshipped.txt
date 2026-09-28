@@ -6,12 +6,24 @@ Sparc.Serialization.SfCodec<T>.MaxSize.get -> int
 Sparc.Serialization.SfCodec<T>.SfCodec(int maxSize, Sparc.Serialization.SfSerializer<T>! serialize, Sparc.Serialization.SfDeserializer<T>! deserialize) -> void
 Sparc.Serialization.SfDeserializer<T>
 Sparc.Serialization.SfSerializer<T>
+Sparc.Serialization.SparcStreamReadBuffer
+Sparc.Serialization.SparcStreamReadBuffer.Advance(int bytesConsumed) -> void
+Sparc.Serialization.SparcStreamReadBuffer.BytesConsumed.get -> long
+Sparc.Serialization.SparcStreamReadBuffer.CopyTo(System.Span<byte> destination) -> void
+Sparc.Serialization.SparcStreamReadBuffer.Dispose() -> void
+Sparc.Serialization.SparcStreamReadBuffer.GetUnreadSpan() -> System.ReadOnlySpan<byte>
+Sparc.Serialization.SparcStreamReadBuffer.IsMessageComplete.get -> bool
+Sparc.Serialization.SparcStreamReadBuffer.SparcStreamReadBuffer() -> void
+Sparc.Serialization.SparcStreamReadBuffer.TryGetSpan(int sizeHint, out System.ReadOnlySpan<byte> span) -> bool
+Sparc.Serialization.SparcStreamReadBuffer.Type.get -> int
 Sparc.Serialization.SparcStreamReader
+Sparc.Serialization.SparcStreamReader.BeginMessage(System.Span<byte> scratch, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Sparc.Serialization.SparcStreamReadBuffer
 Sparc.Serialization.SparcStreamReader.Dispose() -> void
 Sparc.Serialization.SparcStreamReader.Endpoint.get -> Sparc.Core.IConsumerEndpoint!
 Sparc.Serialization.SparcStreamReader.Name.get -> string!
 Sparc.Serialization.SparcStreamReader.ReadMessage(System.Span<byte> destination, out int type, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> int
 Sparc.Serialization.SparcStreamReader.SparcStreamReader(Sparc.Core.IConsumerEndpoint! endpoint) -> void
+Sparc.Serialization.SparcStreamReader.TryBeginMessage(System.Span<byte> scratch, out Sparc.Serialization.SparcStreamReadBuffer buffer, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> bool
 Sparc.Serialization.SparcStreamWriteBuffer
 Sparc.Serialization.SparcStreamWriteBuffer.Advance(int bytesWritten) -> void
 Sparc.Serialization.SparcStreamWriteBuffer.BytesWritten.get -> long

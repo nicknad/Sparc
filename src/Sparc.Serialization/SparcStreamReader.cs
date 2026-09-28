@@ -78,6 +78,48 @@ public sealed class SparcStreamReader : IDisposable
     }
 
     /// <summary>
+    /// Starts a zero-copy read of the next message, skipping the tail of any
+    /// interrupted message first. Waits for the message start when the ring is
+    /// empty.
+    /// </summary>
+    /// <param name="scratch">
+    /// Caller-owned buffer used to stitch chunk seams for
+    /// <see cref="SparcStreamReadBuffer.TryGetSpan"/> and
+    /// <see cref="SparcStreamReadBuffer.CopyTo"/>; it must fit the largest
+    /// contiguous window requested.
+    /// </param>
+    /// <param name="timeout">How long to wait for the next chunk; defaults to 30 seconds.</param>
+    /// <param name="cancellationToken">Cancels waits for the next chunk.</param>
+    public SparcStreamReadBuffer BeginMessage(
+        Span<byte> scratch,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return SparcStreamReadBuffer.Begin(_endpoint, scratch, timeout ?? DefaultTimeout, cancellationToken);
+    }
+
+    /// <summary>
+    /// Starts a zero-copy read of the next message without waiting. Skips the
+    /// tail of an interrupted message when the data is already there; returns
+    /// false when no message start is available.
+    /// </summary>
+    /// <param name="scratch">Caller-owned scratch, as in <see cref="BeginMessage"/>.</param>
+    /// <param name="buffer">The message reader; only valid when this returns true.</param>
+    /// <param name="timeout">How long to wait for a continuation chunk later on; defaults to 30 seconds.</param>
+    /// <param name="cancellationToken">Cancels waits for continuation chunks.</param>
+    public bool TryBeginMessage(
+        Span<byte> scratch,
+        out SparcStreamReadBuffer buffer,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        return SparcStreamReadBuffer.TryBegin(
+            _endpoint, scratch, timeout ?? DefaultTimeout, cancellationToken, out buffer);
+    }
+
+    /// <summary>
     /// Reads one complete message into <paramref name="destination"/>, skipping
     /// the tail of any interrupted message first. Returns the bytes written and
     /// the message type.

@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chains, with reader resynchronization after interrupted messages. The raw
   reservation behind it is public: `IProducerEndpoint.TryReserveWrite(int,
   out Span<byte>)` and `CommitWrite(int length)`.
+- **Zero-copy stream reads.** `SparcStreamReader.BeginMessage`/`TryBeginMessage`
+  return a `SparcStreamReadBuffer` (ref struct) that streams a chunked
+  message's bytes without a destination copy and stitches chunk seams into
+  caller scratch for `TryGetSpan`/`CopyTo`.
 - **`Sparc.Serialization`.** Optional `ISparcCodec<T>` adapter (`SfCodec<T>`)
   that runs SerializerFoundation-based serializers directly over the channel
   writer's destination span and a slot's payload span, with no per-message
