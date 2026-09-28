@@ -16,8 +16,9 @@ namespace Sparc.Serialization;
 /// <para>
 /// Each chunk payload is <c>[int32 flags][data]</c>; the writer sets the
 /// <c>First</c> flag on the first chunk of the message and the <c>Last</c> flag
-/// on the final one. The ring's own slot framing carries the message type on
-/// every chunk.
+/// on the final one. <see cref="Abort"/> marks a failed message as aborted so
+/// consumers report corruption instead of a truncated value. The ring's own
+/// slot framing carries the message type on every chunk.
 /// </para>
 /// <para>
 /// <see cref="GetSpan"/> returns a contiguous window inside the current chunk;
@@ -43,6 +44,7 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
     private int _used;
     private long _bytesWritten;
     private bool _hasChunk;
+    private bool _publishedAny;
     private bool _firstOfMessage;
     private bool _completed;
 
@@ -54,6 +56,7 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
         _used = 0;
         _bytesWritten = 0;
         _hasChunk = false;
+        _publishedAny = false;
         _firstOfMessage = true;
         _completed = false;
     }
@@ -138,6 +141,42 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
         _completed = true;
     }
 
+    /// <summary>
+    /// Ends the message as aborted: the consumer reports
+    /// <see cref="RingBufferCorruptedException"/> instead of delivering a
+    /// truncated value. A message whose chunks were never published is simply
+    /// abandoned.
+    /// </summary>
+    public void Abort()
+    {
+        if (_completed)
+        {
+            return;
+        }
+
+        if (!_publishedAny)
+        {
+            if (_hasChunk)
+            {
+                _endpoint.AbandonWrite();
+                _hasChunk = false;
+                _chunk = null;
+                _used = 0;
+            }
+
+            _completed = true;
+            return;
+        }
+
+        if (!_hasChunk)
+        {
+            ReserveChunk();
+        }
+
+        CommitChunk(last: true, abort: true);
+        _completed = true;
+    }
+
     private void ReserveChunk()
     {
         long startTimestamp = Stopwatch.GetTimestamp();
@@ -164,12 +203,13 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
         _hasChunk = true;
     }
 
-    private void CommitChunk(bool last)
+    private void CommitChunk(bool last, bool abort = false)
     {
-        ChunkFraming.WriteFlags(_chunk, _firstOfMessage, last);
+        ChunkFraming.WriteFlags(_chunk, _firstOfMessage, last, abort);
         _endpoint.CommitWrite(ChunkFraming.HeaderSize + _used);
         _firstOfMessage = false;
         _hasChunk = false;
+        _publishedAny = true;
         _chunk = null;
         _used = 0;
     }

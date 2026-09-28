@@ -155,6 +155,12 @@ public sealed class SparcStreamReader : IDisposable
             int total = 0;
             while (true)
             {
+                if (ChunkFraming.IsAborted(flags))
+                {
+                    lease.Dispose();
+                    throw new RingBufferCorruptedException("The producer aborted the message.");
+                }
+
                 ReadOnlySpan<byte> data = lease.Payload[ChunkFraming.HeaderSize..];
                 if (total + data.Length > destination.Length)
                 {

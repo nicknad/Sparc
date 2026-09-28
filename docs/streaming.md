@@ -84,6 +84,24 @@ slot framing carries the message type on every chunk.
 |---|---|
 | `First` | First chunk of a message |
 | `Last` | Final chunk of a message (a single-chunk message sets both) |
+| `Abort` | The producer could not finish the message; consumers report corruption |
+
+## Codec adapter
+
+`SfStreamCodec<T>` ties a writer and a reader together with a serializer and a
+deserializer (delegates over `SparcStreamWriteBuffer`/`SparcStreamReadBuffer`),
+the streaming counterpart of `SfCodec<T>`:
+
+```csharp
+SfStreamCodec<Order> codec = new(messageType: 1, SerializeOrder, DeserializeOrder);
+
+codec.Write(writer, order);                 // one chunked message of any size
+Order order = codec.Read(reader, scratch);  // deserializer must consume it all
+```
+
+A serializer that throws mid-message aborts the message; consumers report
+`RingBufferCorruptedException` instead of seeing a truncated value. `Read`
+likewise rejects a deserializer that leaves bytes behind.
 
 ## Semantics and limits
 

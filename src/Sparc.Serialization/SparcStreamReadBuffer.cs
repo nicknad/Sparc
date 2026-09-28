@@ -94,6 +94,12 @@ public ref struct SparcStreamReadBuffer
             int flags = ChunkFraming.ReadFlags(lease.Payload);
             if ((flags & ChunkFraming.FirstFlag) != 0)
             {
+                if (ChunkFraming.IsAborted(flags))
+                {
+                    lease.Dispose();
+                    throw new RingBufferCorruptedException("The producer aborted the message.");
+                }
+
                 return new SparcStreamReadBuffer(endpoint, lease, flags, scratch, timeout, cancellationToken);
             }
 
@@ -110,6 +116,12 @@ public ref struct SparcStreamReadBuffer
             int flags = ChunkFraming.ReadFlags(lease.Payload);
             if ((flags & ChunkFraming.FirstFlag) != 0)
             {
+                if (ChunkFraming.IsAborted(flags))
+                {
+                    lease.Dispose();
+                    throw new RingBufferCorruptedException("The producer aborted the message.");
+                }
+
                 buffer = new SparcStreamReadBuffer(endpoint, lease, flags, scratch, timeout, cancellationToken);
                 return true;
             }
@@ -345,6 +357,12 @@ public ref struct SparcStreamReadBuffer
 
         // A First chunk here means the producer restarted mid-message; mixing
         // the two messages silently would be worse than truncating.
+        if (ChunkFraming.IsAborted(flags))
+        {
+            lease.Dispose();
+            throw new RingBufferCorruptedException("The producer aborted the message.");
+        }
+
         if ((flags & ChunkFraming.FirstFlag) != 0)
         {
             lease.Dispose();

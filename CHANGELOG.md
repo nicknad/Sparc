@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   return a `SparcStreamReadBuffer` (ref struct) that streams a chunked
   message's bytes without a destination copy and stitches chunk seams into
   caller scratch for `TryGetSpan`/`CopyTo`.
+- **Abortable stream messages.** `SparcStreamWriteBuffer.Abort()` and the
+  `Abort` chunk flag mark a failed message so consumers report
+  `RingBufferCorruptedException` instead of a truncated value;
+  `SfStreamCodec<T>` ties a stream writer/reader to serializer/deserializer
+  delegates and uses it when serialization fails.
+- **Chunk-stream fuzzing.** `Sparc.FuzzTests` now covers arbitrary chunk bytes
+  and flags, chunked round-trips through both readers, and corrupted chunk
+  flags in a mapped region.
 - **`Sparc.Serialization`.** Optional `ISparcCodec<T>` adapter (`SfCodec<T>`)
   that runs SerializerFoundation-based serializers directly over the channel
   writer's destination span and a slot's payload span, with no per-message

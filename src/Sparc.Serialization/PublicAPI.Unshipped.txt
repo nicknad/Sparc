@@ -6,6 +6,13 @@ Sparc.Serialization.SfCodec<T>.MaxSize.get -> int
 Sparc.Serialization.SfCodec<T>.SfCodec(int maxSize, Sparc.Serialization.SfSerializer<T>! serialize, Sparc.Serialization.SfDeserializer<T>! deserialize) -> void
 Sparc.Serialization.SfDeserializer<T>
 Sparc.Serialization.SfSerializer<T>
+Sparc.Serialization.SfStreamCodec<T>
+Sparc.Serialization.SfStreamCodec<T>.MessageType.get -> int
+Sparc.Serialization.SfStreamCodec<T>.Read(Sparc.Serialization.SparcStreamReader! reader, System.Span<byte> scratch, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> T
+Sparc.Serialization.SfStreamCodec<T>.SfStreamCodec(int messageType, Sparc.Serialization.SfStreamSerializer<T>! serialize, Sparc.Serialization.SfStreamDeserializer<T>! deserialize) -> void
+Sparc.Serialization.SfStreamCodec<T>.Write(Sparc.Serialization.SparcStreamWriter! writer, T value) -> void
+Sparc.Serialization.SfStreamDeserializer<T>
+Sparc.Serialization.SfStreamSerializer<T>
 Sparc.Serialization.SparcStreamReadBuffer
 Sparc.Serialization.SparcStreamReadBuffer.Advance(int bytesConsumed) -> void
 Sparc.Serialization.SparcStreamReadBuffer.BytesConsumed.get -> long
@@ -25,6 +32,7 @@ Sparc.Serialization.SparcStreamReader.ReadMessage(System.Span<byte> destination,
 Sparc.Serialization.SparcStreamReader.SparcStreamReader(Sparc.Core.IConsumerEndpoint! endpoint) -> void
 Sparc.Serialization.SparcStreamReader.TryBeginMessage(System.Span<byte> scratch, out Sparc.Serialization.SparcStreamReadBuffer buffer, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> bool
 Sparc.Serialization.SparcStreamWriteBuffer
+Sparc.Serialization.SparcStreamWriteBuffer.Abort() -> void
 Sparc.Serialization.SparcStreamWriteBuffer.Advance(int bytesWritten) -> void
 Sparc.Serialization.SparcStreamWriteBuffer.BytesWritten.get -> long
 Sparc.Serialization.SparcStreamWriteBuffer.Dispose() -> void

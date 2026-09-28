@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Sparc.Core\Sparc.Core.csproj" />
     <ProjectReference Include="..\..\src\Sparc.InMemory\Sparc.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Serialization\Sparc.Serialization.csproj" />
   </ItemGroup>
 
 </Project>
