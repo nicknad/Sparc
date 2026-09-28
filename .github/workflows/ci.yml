@@ -33,6 +33,7 @@ jobs:
         run: |
           dotnet test tests/Sparc.UnitTests/Sparc.UnitTests.csproj -c Release --no-build
           dotnet test tests/Sparc.ConcurrencyTests/Sparc.ConcurrencyTests.csproj -c Release --no-build
+          dotnet test tests/Sparc.FuzzTests/Sparc.FuzzTests.csproj -c Release --no-build
 
       - name: Build samples
         run: dotnet build Sparc.Samples.slnx -c Release --no-incremental

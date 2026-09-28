@@ -132,7 +132,9 @@ internal struct RingBufferHeader
                 $"Region '{regionName}' declares header size {HeaderSize}, expected {RingBufferLayout.HeaderSize}.");
         }
 
-        if (!RingBufferLayout.IsPowerOfTwo(Capacity) || RingBufferLayout.MaxPayloadSizeFor(SlotSize) != MaxPayloadSize)
+        if (!RingBufferLayout.IsPowerOfTwo(Capacity)
+            || SlotSize <= RingBufferLayout.MessageHeaderSize
+            || RingBufferLayout.MaxPayloadSizeFor(SlotSize) != MaxPayloadSize)
         {
             throw new RingBufferCorruptedException(
                 $"Region '{regionName}' contains inconsistent geometry (capacity={Capacity}, slotSize={SlotSize}, maxPayload={MaxPayloadSize}).");
