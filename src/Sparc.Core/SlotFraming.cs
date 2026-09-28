@@ -21,10 +21,9 @@ internal static class SlotFraming
         payload.CopyTo(slot[RingBufferLayout.MessageHeaderSize..]);
     }
 
-    public static void Read(ReadOnlySpan<byte> slot, Span<byte> destination, out int bytesRead, out int type)
+    public static int ReadHeader(ReadOnlySpan<byte> slot, out int type)
     {
         Debug.Assert(slot.Length >= RingBufferLayout.MessageHeaderSize);
-        Debug.Assert(destination.Length >= slot.Length - RingBufferLayout.MessageHeaderSize);
 
         int length = BinaryPrimitives.ReadInt32LittleEndian(slot);
         if ((uint)length > (uint)(slot.Length - RingBufferLayout.MessageHeaderSize))
@@ -35,6 +34,14 @@ internal static class SlotFraming
         }
 
         type = BinaryPrimitives.ReadInt32LittleEndian(slot[TypeOffset..]);
+        return length;
+    }
+
+    public static void Read(ReadOnlySpan<byte> slot, Span<byte> destination, out int bytesRead, out int type)
+    {
+        Debug.Assert(destination.Length >= slot.Length - RingBufferLayout.MessageHeaderSize);
+
+        int length = ReadHeader(slot, out type);
         slot.Slice(RingBufferLayout.MessageHeaderSize, length).CopyTo(destination);
         bytesRead = length;
     }

@@ -369,14 +369,8 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
         unsafe
         {
             ReadOnlySpan<byte> slot = new(_slots + offset, SlotSize);
-            length = BinaryPrimitives.ReadInt32LittleEndian(slot);
-            if ((uint)length > (uint)MaxPayloadSize)
-            {
-                throw new RingBufferCorruptedException(
-                    $"Slot declares a payload of {length} bytes but only {MaxPayloadSize} are available.");
-            }
-
-            type = BinaryPrimitives.ReadInt32LittleEndian(slot[sizeof(int)..]);
+            length = SlotFraming.ReadHeader(slot, out type);
+            Debug.Assert(length <= MaxPayloadSize);
             payload = slot.Slice(RingBufferLayout.MessageHeaderSize, length);
         }
 

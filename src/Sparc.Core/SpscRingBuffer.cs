@@ -251,14 +251,8 @@ public sealed class SpscRingBuffer : IRingBuffer
 
         Debug.Assert((long)offset + SlotSize <= _buffer.Length);
         ReadOnlySpan<byte> slot = _buffer.AsSpan(offset, SlotSize);
-        length = BinaryPrimitives.ReadInt32LittleEndian(slot);
-        if ((uint)length > (uint)MaxPayloadSize)
-        {
-            throw new RingBufferCorruptedException(
-                $"Slot declares a payload of {length} bytes but only {MaxPayloadSize} are available.");
-        }
-
-        type = BinaryPrimitives.ReadInt32LittleEndian(slot[sizeof(int)..]);
+        length = SlotFraming.ReadHeader(slot, out type);
+        Debug.Assert(length <= MaxPayloadSize);
         payload = slot.Slice(RingBufferLayout.MessageHeaderSize, length);
         _peekedHead = head;
         _hasPeekedRead = true;
