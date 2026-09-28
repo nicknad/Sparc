@@ -67,13 +67,14 @@ adjacent slots never share one.
 Serializers built on
 [SerializerFoundation](https://github.com/Cysharp/SerializerFoundation) can be
 plugged in through `SfCodec<T>` from the optional `Sparc.Serialization`
-package: the serializer writes through `IWriteBuffer` directly into the
-writer's destination span and reads through `IReadBuffer` directly from a
-slot's payload span, with no intermediate message copy. Measured on this
+package: the serializer encodes straight into the writer's scratch span and
+decodes straight from a slot's payload span through
+`IWriteBuffer`/`IReadBuffer`, with no codec-side buffers. Measured on this
 machine for an 8-byte record, encode+decode, 2M iterations, single-threaded:
 `SfCodec<T>` ~81 ns/op and 0 B allocated versus `JsonCodec<T>` ~661 ns/op and
 88 B per message; through the typed channel, ~165 ns/op and 0 B. A value that
-needs more than `MaxSize` throws `InvalidOperationException`.
+needs more than `MaxSize` throws `InvalidOperationException`; values larger
+than a slot use chunked streaming ([streaming.md](streaming.md)) instead.
 
 ## API
 
@@ -109,9 +110,10 @@ endpoint reads with the reader once the pump is running.
   endpoint state `Running`; the consumer's `ReadAllAsync` then ends through the
   idle-timeout/producer-state check only if the state was published (graceful
   stop), otherwise keep your own liveness policy.
-* The typed layer trades one copy (encode into the writer's private buffer) for
+* The typed layer trades one copy (encode into the writer's scratch buffer) for
   ergonomics. For true zero-copy, publish into `writer.Endpoint` with
-  `TryReserveWrite`/`WriteLease`, or use the endpoint API directly.
+  `TryReserveWrite`/`WriteLease`, or use the endpoint API directly; for values
+  larger than a slot, use chunked streaming ([streaming.md](streaming.md)).
 
 ## Overhead
 

@@ -235,7 +235,7 @@ non-temporal stores.
 
 **Remaining cost.** Even with the zero-copy lease, the producer's payload write
 still pays RFO when the region is not cache-resident. A non-temporal store path
-is an open follow-up (`WORKLIST.md`).
+is an open follow-up.
 
 ### C8. The ring is a bounded, sequentially streamed circular buffer
 
@@ -265,10 +265,9 @@ in Release.
 
 ### D3. Zero-copy lease removes both intermediate copies
 
-Before the lease API: producer copied its payload array into the slot;
-consumer copied the slot into a `MaxPayloadSize` destination and scanned the
-copy. Now the producer writes directly into the slot and the consumer verifies
-in place. The consumer no longer allocates a destination buffer at all.
+The producer writes directly into the slot and the consumer verifies in place,
+so neither side needs an intermediate payload buffer and the consumer no longer
+allocates a destination at all.
 
 **Measured.** Cross-process 4 KB: **2.0M msg/s / 7.8 GiB/s** with the lease vs
 1.16M / 4.5 GiB/s with copies.

@@ -60,7 +60,7 @@ Producer process                              Consumer process
 | Consumer crash | The payload copy happens before `head` advances, so a message is redelivered after a restart: **at-least-once across consumer crashes**, never torn, never silently lost. |
 | Producer crash | Unpublished slots are invisible. Already published messages stay valid; the consumer detects the stall through its idle timeout. |
 | Liveness detection | Advisory only: endpoint states are updated on graceful start/stop, but a hard kill leaves `Running` (no heartbeat, by design). |
-| Payload size | Fixed per region (slot size minus an 8-byte frame). Variable-size records must be packed by the caller (the YARP sample does exactly that). |
+| Payload size | Fixed per region (slot size minus an 8-byte frame); larger values are split into a chunk chain by `Sparc.Serialization` ([streaming.md](streaming.md)) or packed by the caller. |
 | Security boundary | None. Both processes map the same region; use it between processes of the same trust domain and user. |
 
 ## What SPARC is not
@@ -69,8 +69,9 @@ Producer process                              Consumer process
 * Not persistent: memory dies with the last mapping (Windows) or the backing
   file (Unix).
 * Not networked: both endpoints must run on the same machine and share a user.
-* Not variable-sized: every slot has the same size; larger records must be split
-  or dropped by the caller.
+* Not variable-sized per message: every slot has the same size. Values larger
+  than one slot are streamed as chunks (`Sparc.Serialization`); values whose
+  encoded size varies are still packed by the caller.
 * Not a workflow engine: no acknowledgements, no retries, no heartbeats.
 
 ## How it compares
@@ -105,7 +106,8 @@ wake-ups on every message, and per-message allocation.
 4. **Isolate the operating system.** The ring protocol does not reference any OS
    type; `IIpcMemoryRegionFactory` is the only seam (`src/Sparc.Abstractions`).
 5. **Make the failure semantics explicit.** Crash behavior is documented and
-   tested rather than assumed (`README.md` section 4, `tests/Sparc.ProcessTests`).
+   tested rather than assumed ([how-it-works.md](how-it-works.md) section 9,
+   `tests/Sparc.ProcessTests`).
 6. **Measure with the right experiment.** Payload size and region footprint are
    separate variables; the harness can vary them independently
    ([performance-invariants.md](performance-invariants.md), section G).

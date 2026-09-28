@@ -6,7 +6,8 @@ Use SPARC when **all** of these hold:
 
 * Exactly one producer and one consumer, in different processes (or two views in
   one process).
-* Messages are fixed-size or can be packed into a fixed slot.
+* Messages are fixed-size or can be packed into a fixed slot; larger values can
+  be chunk-streamed by `Sparc.Serialization` ([streaming.md](streaming.md)).
 * Both processes run on the same machine under the same user.
 * The hot path must avoid locks, scheduler wake-ups, and GC pauses.
 * Losing a message under crash conditions is acceptable (at-least-once
@@ -117,7 +118,7 @@ shape.
 | Situation | Better tool |
 |---|---|
 | Multiple producers or consumers | `Channel<T>` / `ConcurrentQueue<T>`, or shard into multiple SPSC rings (one per producer/consumer pair) |
-| Records much larger than a cache line and truly variable | Sockets/pipes, or split into chunks; fixed slots waste memory and add a copy |
+| Values much larger than a slot | Chunk-stream them with `Sparc.Serialization` ([streaming.md](streaming.md)) instead of oversizing the ring |
 | Cross-machine transport | TCP/QUIC/gRPC |
 | Durability or replay after both processes die | A log/broker (Kafka, files); SPARC memory dies with its mappings |
 | Untrusted peer process | No isolation: both sides can corrupt the region. Use IPC with kernel-enforced boundaries |
@@ -129,6 +130,10 @@ shape.
 * **Slot size**: `max(256, roundUp(payload + 8, 64))`. The CLI derives this
   automatically. The 64-byte rounding keeps slot boundaries on cache lines; the
   8-byte frame is `[length:int32][type:int32]`.
+* **Values larger than a slot**: keep the slots small and stream the value as a
+  chunk chain (`Sparc.Serialization`) rather than sizing the whole ring for the
+  largest message. Message size is then bounded by consumer liveness, not by
+  capacity.
 * **Capacity**: power of two. It sets both the maximum messages in flight and
   the worst-case queueing delay `capacity x consumer period` when the consumer
   is the slower side. 1024 is the default.

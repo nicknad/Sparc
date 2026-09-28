@@ -87,7 +87,8 @@ Hosted services expose `Completion` and `Result`, so a test can call
 
 `tests/Sparc.UnitTests` uses this package for session and channel tests;
 `tests/Sparc.ConcurrencyTests` still drives the raw buffers through dedicated
-threads for the 10M-message verification, and `tests/Sparc.ProcessTests` spawns
-real CLI processes for lifecycle and kill scenarios. Use the same split:
-in-process for logic, real processes only when the OS or crash semantics are
-the thing under test.
+threads for the 10M-message verification, `tests/Sparc.FuzzTests` property-tests
+the untrusted-input paths (headers, slots, chunk framing, reassembly, hostile
+peers), and `tests/Sparc.ProcessTests` spawns real CLI processes for lifecycle
+and kill scenarios. Use the same split: in-process for logic, real processes only
+when the OS or crash semantics are the thing under test.

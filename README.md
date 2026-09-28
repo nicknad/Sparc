@@ -21,7 +21,8 @@ Producer process                          Consumer process
 
 * exactly one producer and one consumer (SPSC)
 * no mutexes, no OS synchronization, no CAS on the data path
-* fixed-size slots, bounded memory, zero allocations after initialization
+* fixed-size slots with chunked streaming for larger values, bounded memory,
+  zero allocations after initialization
 * `Volatile` acquire/release ordering (works on x86-64 and ARM64, not just "x86 is strong")
 * OS-specific mapping isolated behind `IIpcMemoryRegionFactory`
 * reusable sessions for CLIs, web apps and worker services (`TimeProvider`,
@@ -38,7 +39,7 @@ Built and tested against **.NET 11 RC1** (`11.0.100-rc.1.26425.128`, pinned in
 
 The implementation and documentation in this repository were generated with AI
 assistance (**DeepSeek Flash 4.1**) under the maintainer's direction and then
-tested and benchmarked. The full test suite (107 unit, concurrency and process
+tested and benchmarked. The full test suite (unit, concurrency, fuzz and process
 tests) and the benchmark harness ship with the repository so the result can be
 verified independently — it is nonetheless AI-authored code: read it with that
 in mind, and open an issue for anything that does not hold up.
@@ -165,9 +166,10 @@ dotnet run -c Release --project tools/Sparc.Producer  -- --name demo --count 100
 
 Builds treat warnings as errors (`TreatWarningsAsErrors` in `Directory.Build.props`).
 Samples are intentionally not part of the library solution: they build from
-`Sparc.Samples.slnx` (same repo, separate solution). A GitHub Actions workflow
-(`.github/workflows/ci.yml`) is ready to build + test the library solution and build
-the samples on `windows-latest` once a git remote is configured.
+`Sparc.Samples.slnx` (same repo, separate solution). GitHub Actions
+(`.github/workflows/ci.yml`) builds, tests and packs on `windows-latest` and
+runs the OS-independent suites (unit, concurrency, fuzz) plus the samples build
+on `ubuntu-latest`; the release workflow (`release.yml`) runs on `v*` tags.
 
 The consumer may also be started first (it creates the region; the producer joins).
 Example output:
@@ -235,23 +237,8 @@ Reference the projects (or packages once published) you need:
 ### Web app / worker service / generic host
 
 The `Sparc.Hosting` package registers the transport, the channel and the
-endpoint roles in a few lines. A producer process:
-
-```csharp
-using Sparc.Client;
-
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddSparcIpc();                                // picks Windows/Unix transport
-builder.Services.AddSparcChannel(options => options.Name = "orders");
-builder.Services.AddSparcProducerSession(options =>
-{
-    options.Count = 1_000_000;
-    options.PayloadSize = 64;
-});
-```
-
-A consumer process swaps the last line for:
+endpoint roles in a few lines; the quick-start registrations above are the whole
+producer. A consumer process swaps the session line for:
 
 ```csharp
 builder.Services.AddSparcConsumerSession(options => options.Count = 0); // until the producer stops
@@ -641,18 +628,23 @@ dotnet test Sparc.slnx -c Release        # .NET 11 SDK + Microsoft.Testing.Platf
   `Sparc.InMemory` factory, so they are OS-independent; Windows factory tests are
   guarded by `OperatingSystem.IsWindows()` and Unix factory tests by
   `!OperatingSystem.IsWindows()` (the Unix tests were verified under WSL Debian 13
-  with the pinned SDK while CI itself stays Windows-only).
+  with the pinned SDK).
 * **ConcurrencyTests.** Two dedicated threads move **10,000,000 messages** per transport,
   with sequence + checksum + fill-byte verification on every message, for both the
   in-process array buffer and the shared-memory buffer (two views of one region). A
   tiny-capacity (2-slot) torture test (1,000,000 messages) and a no-allocation assertion
   (writes+reads allocate < 4 KiB total).
+* **FuzzTests.** CsCheck property tests for the untrusted-input paths: arbitrary
+  header/slot/chunk bytes, geometry and region names, mixed copy/lease operation streams
+  against a queue oracle, chunk reassembly through both readers, and hostile peers
+  corrupting a published slot or chunk flags.
 * **ProcessTests.** Real `dotnet` child processes: both start orders, unlimited consumer
   drain, role conflict, geometry mismatch, killed consumer → producer times out, killed
   producer → consumer exits incomplete, `--require-existing` timeout.
 
-The *full* suite targets Windows: the shared-memory concurrency test and the process
-tests need named memory-mapped files.
+The full suite runs on Windows; the Ubuntu CI lane runs the OS-independent unit,
+concurrency and fuzz suites, because the shared-memory concurrency half and the
+process tests need named memory-mapped files.
 
 Crash tests kill processes with `Process.Kill(entireProcessTree: true)`; the assertions
 check exit codes and message counts, not wall-clock timing.
@@ -775,7 +767,7 @@ Same harness with one endpoint paced (`--delay-us`); rates in msg/s, latencies i
   *idle-detection* latency — 5.1 ms p50 — because `SpinWait` yields and then sleeps rather
   than busy-spinning. Both alternatives were measured on the same scenario: `--spin-only`
   cuts p50 to 3.9 µs at the cost of a busy core while the peer is idle, and `--notify`
-  `--notify` blocks on an OS latch for a p50 of 7.6 µs at ~2 % consumer CPU. This is the
+  blocks on an OS latch for a p50 of 7.6 µs at ~2 % consumer CPU. This is the
   number that matters most for telemetry consumers.
 * **Producer ≈ consumer**: throughput tracks the slower side, and latency sits at the queue
   operating point (the startup backlog fills the 1024-slot buffer before both ends settle).
@@ -798,9 +790,15 @@ Caveats worth knowing before quoting any of this:
 
 ## 7. Scope boundary
 
-Not implemented (deliberately): MPSC/MPMC, dynamic resizing, variable-sized records,
-persistence, networking, compression, encryption, multiple consumers/producers, heartbeats
-or automatic crash detection.
+Not implemented (deliberately): MPSC/MPMC, dynamic resizing, persistence,
+networking, compression, encryption, multiple consumers/producers, heartbeats or
+automatic crash detection.
+
+Fixed slots stay the unit of storage. Values larger than a slot are split into a
+chunk chain by the optional `Sparc.Serialization` package
+([docs/streaming.md](docs/streaming.md)) instead of being stored as
+variable-size records; encoded sizes that vary per message are still packed by
+the caller.
 
 The learning objective is the one this project exercises end to end:
 

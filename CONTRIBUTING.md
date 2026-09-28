@@ -15,7 +15,7 @@ building, testing, and what a good change looks like.
 
 ```powershell
 dotnet build Sparc.slnx -c Release          # warnings are errors
-dotnet test  Sparc.slnx -c Release          # unit + concurrency + process tests
+dotnet test  Sparc.slnx -c Release          # unit + concurrency + fuzz + process tests
 dotnet build Sparc.Samples.slnx -c Release  # samples live in a separate solution
 ```
 
@@ -57,8 +57,10 @@ before trusting a comparison on a new host, and read
   behaviour changes and from benchmark refreshes.
 * **Commit messages** are imperative, explain the why, and include measured
   numbers when the change is performance-related (see `git log` for examples).
-* **No new dependencies without a reason.** The libraries intentionally depend
-  only on `Microsoft.Extensions.*` abstractions.
+* **No new dependencies without a reason.** The core libraries intentionally
+  depend only on `Microsoft.Extensions.*` abstractions; optional integration
+  packages may add one, for example `Sparc.Serialization` on
+  `SerializerFoundation`.
 
 ## Reporting bugs and vulnerabilities
 

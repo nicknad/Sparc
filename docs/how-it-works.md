@@ -9,6 +9,7 @@ wait modes, platform implementations, and crash semantics.
 ```
 host (CLI / BackgroundService / sample)
   |  ProducerSession / ConsumerSession          Sparc.Client
+  |  SparcChannel<T> / SfCodec / chunk streams  Sparc.Channels / Sparc.Serialization (optional)
   |  IEndpoint / IProducerEndpoint / IConsumerEndpoint: role, states, waiting flags
   |  SparcRing / SharedRingBuffer / SpscRingBuffer          Sparc.Core
   |  RingBufferRegion (handshake, header, validation)
@@ -162,12 +163,15 @@ rules make 64-bit atomics work:
 
 ## 6. The zero-copy lease API
 
-`IRingBuffer` exposes both copy and lease operations:
+The role-typed endpoints expose both copy and lease operations:
 
-| Producer | Consumer |
+| Producer (`IProducerEndpoint`) | Consumer (`IConsumerEndpoint`) |
 |---|---|
-| `TryReserveWrite(type, length, out Span<byte> payload)` | `TryPeek(out ReadOnlySpan<byte> payload, out length, out type)` |
-| `CommitWrite()` publishes the frame and advances `tail` | `AdvanceRead()` advances `head` |
+| `TryPublish(type, payload)` copies in; `Publish` blocks | `TryRead(destination, ...)` copies out; `Read` blocks |
+| `TryReserveWrite(type, length, out Span<byte> payload)` reserves a known size | `TryPeek(out ReadOnlySpan<byte> payload, ...)` views the oldest message |
+| `TryReserveWrite(type, out Span<byte> payload)` reserves the full payload window | `TryBeginRead(out ReadLease lease)` views it with scope-based release |
+| `CommitWrite()` / `CommitWrite(length)` publishes | `AdvanceRead()` releases the slot |
+| `TryBeginWrite(...)` / `WriteLease` releases on dispose | |
 | `AbandonWrite()` discards the reservation | |
 
 Properties:
@@ -181,14 +185,12 @@ Properties:
   before the store leaves the slot unpublished.
 * `AdvanceRead` release-stores `head` only after the caller is done with the
   view, so the producer cannot overwrite it in the meantime.
-* The copy methods (`TryWrite`/`TryRead`) remain as wrappers for callers that
-  already own a buffer.
-
-The sessions use the lease path: `ProducerSession` stamps
-`[sequence][timestamp]` and the fill bytes into the reserved slot;
-`ConsumerSession` verifies and samples latency in place. Before this change the
-consumer allocated and copied a `MaxPayloadSize` destination per run, and the
-producer copied from a private payload array.
+* The full-window reservation plus `CommitWrite(length)` is what makes chunked
+  streaming possible: a serializer fills the window and publishes only the bytes
+  it used (`Sparc.Serialization`, [streaming.md](streaming.md)).
+* The sessions use the lease path: `ProducerSession` stamps
+  `[sequence][timestamp]` and the fill bytes into the reserved slot;
+  `ConsumerSession` verifies and samples latency in place.
 
 ## 7. Sessions
 
@@ -289,6 +291,12 @@ methods and managed spans alone cannot express. The pointer is acquired once
   conflicts, geometry mismatch, killed consumer -> producer times out, killed
   producer -> consumer exits incomplete, `--require-existing`, and a
   `--notify` cross-process round trip.
+* `Sparc.FuzzTests` - property tests for the untrusted-input paths: arbitrary
+  header/slot/chunk bytes, geometry and region names, mixed copy/lease
+  operation streams against a queue oracle, chunk reassembly through both
+  readers, and hostile peers corrupting a published slot or chunk flags.
 
-The full suite targets Windows because the shared-memory concurrency and
-process tests need named mappings; the Unix factory has its own guarded tests.
+The full suite targets Windows because the shared-memory concurrency test and
+the process tests need named mappings; the OS-independent suites (unit,
+concurrency, fuzz) also run on the Ubuntu CI lane, and the Unix factory has its
+own guarded tests.
