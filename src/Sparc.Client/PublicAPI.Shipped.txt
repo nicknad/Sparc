@@ -1,1 +1,156 @@
 #nullable enable
+const Sparc.Client.RingBufferMessage.FillByte = 165 -> byte
+const Sparc.Client.RingBufferMessage.HeaderSize = 16 -> int
+Sparc.Client.ConsumerProgress
+Sparc.Client.ConsumerProgress.ConsumerProgress() -> void
+Sparc.Client.ConsumerProgress.ConsumerProgress(long Received, long ReceivedBytes, System.TimeSpan Elapsed) -> void
+Sparc.Client.ConsumerProgress.Elapsed.get -> System.TimeSpan
+Sparc.Client.ConsumerProgress.Elapsed.init -> void
+Sparc.Client.ConsumerProgress.Received.get -> long
+Sparc.Client.ConsumerProgress.Received.init -> void
+Sparc.Client.ConsumerProgress.ReceivedBytes.get -> long
+Sparc.Client.ConsumerProgress.ReceivedBytes.init -> void
+Sparc.Client.ConsumerRunResult
+Sparc.Client.ConsumerRunResult.ConsumerRunResult() -> void
+Sparc.Client.ConsumerRunResult.ConsumerRunResult(long Received, long ReceivedBytes, System.TimeSpan Elapsed, Sparc.Client.SessionStopReason Reason, Sparc.Client.Diagnostics.LatencyHistogram! Latency, string? FailureMessage) -> void
+Sparc.Client.ConsumerRunResult.Elapsed.get -> System.TimeSpan
+Sparc.Client.ConsumerRunResult.Elapsed.init -> void
+Sparc.Client.ConsumerRunResult.FailureMessage.get -> string?
+Sparc.Client.ConsumerRunResult.FailureMessage.init -> void
+Sparc.Client.ConsumerRunResult.Latency.get -> Sparc.Client.Diagnostics.LatencyHistogram!
+Sparc.Client.ConsumerRunResult.Latency.init -> void
+Sparc.Client.ConsumerRunResult.Reason.get -> Sparc.Client.SessionStopReason
+Sparc.Client.ConsumerRunResult.Reason.init -> void
+Sparc.Client.ConsumerRunResult.Received.get -> long
+Sparc.Client.ConsumerRunResult.Received.init -> void
+Sparc.Client.ConsumerRunResult.ReceivedBytes.get -> long
+Sparc.Client.ConsumerRunResult.ReceivedBytes.init -> void
+Sparc.Client.ConsumerRunResult.RunElapsed.get -> System.TimeSpan
+Sparc.Client.ConsumerRunResult.RunElapsed.init -> void
+Sparc.Client.ConsumerSession
+Sparc.Client.ConsumerSession.ConsumerSession(Sparc.Core.IConsumerEndpoint! buffer, Sparc.Client.ConsumerSessionOptions! options, System.TimeProvider? timeProvider = null, Microsoft.Extensions.Logging.ILogger? logger = null) -> void
+Sparc.Client.ConsumerSession.Run(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken), System.IProgress<Sparc.Client.ConsumerProgress>? progress = null) -> Sparc.Client.ConsumerRunResult
+Sparc.Client.ConsumerSession.RunAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken), System.IProgress<Sparc.Client.ConsumerProgress>? progress = null) -> System.Threading.Tasks.Task<Sparc.Client.ConsumerRunResult>!
+Sparc.Client.ConsumerSession.WaitForPeerAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Sparc.Client.ConsumerSessionOptions
+Sparc.Client.ConsumerSessionOptions.ConsumerSessionOptions() -> void
+Sparc.Client.ConsumerSessionOptions.Count.get -> long
+Sparc.Client.ConsumerSessionOptions.Count.set -> void
+Sparc.Client.ConsumerSessionOptions.ExpectedType.get -> int
+Sparc.Client.ConsumerSessionOptions.ExpectedType.set -> void
+Sparc.Client.ConsumerSessionOptions.IdleTimeout.get -> System.TimeSpan
+Sparc.Client.ConsumerSessionOptions.IdleTimeout.set -> void
+Sparc.Client.ConsumerSessionOptions.IncludeSessionHeader.get -> bool
+Sparc.Client.ConsumerSessionOptions.IncludeSessionHeader.set -> void
+Sparc.Client.ConsumerSessionOptions.Notification.get -> Sparc.Client.SessionNotification?
+Sparc.Client.ConsumerSessionOptions.Notification.set -> void
+Sparc.Client.ConsumerSessionOptions.PerMessageDelay.get -> System.TimeSpan
+Sparc.Client.ConsumerSessionOptions.PerMessageDelay.set -> void
+Sparc.Client.ConsumerSessionOptions.Takeover.get -> bool
+Sparc.Client.ConsumerSessionOptions.Takeover.set -> void
+Sparc.Client.ConsumerSessionOptions.Verify.get -> bool
+Sparc.Client.ConsumerSessionOptions.Verify.set -> void
+Sparc.Client.ConsumerSessionOptions.VerifyPayload.get -> bool
+Sparc.Client.ConsumerSessionOptions.VerifyPayload.set -> void
+Sparc.Client.ConsumerSessionOptions.WaitMode.get -> Sparc.Client.SessionWaitMode
+Sparc.Client.ConsumerSessionOptions.WaitMode.set -> void
+Sparc.Client.Diagnostics.LatencyHistogram
+Sparc.Client.Diagnostics.LatencyHistogram.Count.get -> long
+Sparc.Client.Diagnostics.LatencyHistogram.LatencyHistogram() -> void
+Sparc.Client.Diagnostics.LatencyHistogram.MaxTicks.get -> long
+Sparc.Client.Diagnostics.LatencyHistogram.MeanTicks.get -> double
+Sparc.Client.Diagnostics.LatencyHistogram.MinTicks.get -> long
+Sparc.Client.Diagnostics.LatencyHistogram.PercentileTicks(double percentile) -> double
+Sparc.Client.Diagnostics.LatencyHistogram.Record(long ticks) -> void
+Sparc.Client.Diagnostics.LatencyHistogram.Reset() -> void
+Sparc.Client.Diagnostics.LatencyHistogram.ToMicrosecondsReport(double stopwatchFrequency) -> string!
+Sparc.Client.InProcessSessionSignal
+Sparc.Client.InProcessSessionSignal.Dispose() -> void
+Sparc.Client.InProcessSessionSignal.InProcessSessionSignal() -> void
+Sparc.Client.InProcessSessionSignal.Signal() -> void
+Sparc.Client.InProcessSessionSignal.Wait(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken) -> bool
+Sparc.Client.ISessionSignal
+Sparc.Client.ISessionSignal.Signal() -> void
+Sparc.Client.ISessionSignal.Wait(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken) -> bool
+Sparc.Client.NamedSessionSignal
+Sparc.Client.NamedSessionSignal.Dispose() -> void
+Sparc.Client.NamedSessionSignal.NamedSessionSignal(string! name) -> void
+Sparc.Client.NamedSessionSignal.Signal() -> void
+Sparc.Client.NamedSessionSignal.Wait(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken) -> bool
+Sparc.Client.ProducerProgress
+Sparc.Client.ProducerProgress.Elapsed.get -> System.TimeSpan
+Sparc.Client.ProducerProgress.Elapsed.init -> void
+Sparc.Client.ProducerProgress.Produced.get -> long
+Sparc.Client.ProducerProgress.Produced.init -> void
+Sparc.Client.ProducerProgress.ProducerProgress() -> void
+Sparc.Client.ProducerProgress.ProducerProgress(long Produced, System.TimeSpan Elapsed) -> void
+Sparc.Client.ProducerRunResult
+Sparc.Client.ProducerRunResult.ActiveElapsed.get -> System.TimeSpan
+Sparc.Client.ProducerRunResult.ActiveElapsed.init -> void
+Sparc.Client.ProducerRunResult.Elapsed.get -> System.TimeSpan
+Sparc.Client.ProducerRunResult.Elapsed.init -> void
+Sparc.Client.ProducerRunResult.FailureMessage.get -> string?
+Sparc.Client.ProducerRunResult.FailureMessage.init -> void
+Sparc.Client.ProducerRunResult.PayloadSize.get -> int
+Sparc.Client.ProducerRunResult.PayloadSize.init -> void
+Sparc.Client.ProducerRunResult.PeerState.get -> Sparc.Core.RingBufferEndpointState
+Sparc.Client.ProducerRunResult.PeerState.init -> void
+Sparc.Client.ProducerRunResult.Produced.get -> long
+Sparc.Client.ProducerRunResult.Produced.init -> void
+Sparc.Client.ProducerRunResult.ProducerRunResult() -> void
+Sparc.Client.ProducerRunResult.ProducerRunResult(long Produced, int PayloadSize, System.TimeSpan Elapsed, Sparc.Client.SessionStopReason Reason, long Unsent, Sparc.Core.RingBufferEndpointState PeerState, string? FailureMessage) -> void
+Sparc.Client.ProducerRunResult.Reason.get -> Sparc.Client.SessionStopReason
+Sparc.Client.ProducerRunResult.Reason.init -> void
+Sparc.Client.ProducerRunResult.Unsent.get -> long
+Sparc.Client.ProducerRunResult.Unsent.init -> void
+Sparc.Client.ProducerSession
+Sparc.Client.ProducerSession.ProducerSession(Sparc.Core.IProducerEndpoint! buffer, Sparc.Client.ProducerSessionOptions! options, System.TimeProvider? timeProvider = null, Microsoft.Extensions.Logging.ILogger? logger = null) -> void
+Sparc.Client.ProducerSession.Run(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken), System.IProgress<Sparc.Client.ProducerProgress>? progress = null) -> Sparc.Client.ProducerRunResult
+Sparc.Client.ProducerSession.RunAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken), System.IProgress<Sparc.Client.ProducerProgress>? progress = null) -> System.Threading.Tasks.Task<Sparc.Client.ProducerRunResult>!
+Sparc.Client.ProducerSession.WaitForPeerAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+Sparc.Client.ProducerSessionOptions
+Sparc.Client.ProducerSessionOptions.Count.get -> long
+Sparc.Client.ProducerSessionOptions.Count.set -> void
+Sparc.Client.ProducerSessionOptions.FullTimeout.get -> System.TimeSpan
+Sparc.Client.ProducerSessionOptions.FullTimeout.set -> void
+Sparc.Client.ProducerSessionOptions.IncludeSessionHeader.get -> bool
+Sparc.Client.ProducerSessionOptions.IncludeSessionHeader.set -> void
+Sparc.Client.ProducerSessionOptions.MessageType.get -> int
+Sparc.Client.ProducerSessionOptions.MessageType.set -> void
+Sparc.Client.ProducerSessionOptions.Notification.get -> Sparc.Client.SessionNotification?
+Sparc.Client.ProducerSessionOptions.Notification.set -> void
+Sparc.Client.ProducerSessionOptions.PayloadSize.get -> int
+Sparc.Client.ProducerSessionOptions.PayloadSize.set -> void
+Sparc.Client.ProducerSessionOptions.PayloadWriter.get -> Sparc.Client.SessionPayloadWriter?
+Sparc.Client.ProducerSessionOptions.PayloadWriter.set -> void
+Sparc.Client.ProducerSessionOptions.PerMessageDelay.get -> System.TimeSpan
+Sparc.Client.ProducerSessionOptions.PerMessageDelay.set -> void
+Sparc.Client.ProducerSessionOptions.ProducerSessionOptions() -> void
+Sparc.Client.ProducerSessionOptions.Takeover.get -> bool
+Sparc.Client.ProducerSessionOptions.Takeover.set -> void
+Sparc.Client.ProducerSessionOptions.WaitMode.get -> Sparc.Client.SessionWaitMode
+Sparc.Client.ProducerSessionOptions.WaitMode.set -> void
+Sparc.Client.RingBufferMessage
+Sparc.Client.SessionNotification
+Sparc.Client.SessionNotification.Data.get -> Sparc.Client.ISessionSignal!
+Sparc.Client.SessionNotification.Dispose() -> void
+Sparc.Client.SessionNotification.SessionNotification(Sparc.Client.ISessionSignal! data, Sparc.Client.ISessionSignal! space) -> void
+Sparc.Client.SessionNotification.Space.get -> Sparc.Client.ISessionSignal!
+Sparc.Client.SessionPayloadWriter
+Sparc.Client.SessionStopReason
+Sparc.Client.SessionStopReason.Cancelled = 4 -> Sparc.Client.SessionStopReason
+Sparc.Client.SessionStopReason.Completed = 0 -> Sparc.Client.SessionStopReason
+Sparc.Client.SessionStopReason.PeerStopped = 1 -> Sparc.Client.SessionStopReason
+Sparc.Client.SessionStopReason.Timeout = 2 -> Sparc.Client.SessionStopReason
+Sparc.Client.SessionStopReason.VerificationFailed = 3 -> Sparc.Client.SessionStopReason
+Sparc.Client.SessionWaitMode
+Sparc.Client.SessionWaitMode.Notification = 2 -> Sparc.Client.SessionWaitMode
+Sparc.Client.SessionWaitMode.SpinOnly = 1 -> Sparc.Client.SessionWaitMode
+Sparc.Client.SessionWaitMode.SpinThenSleep = 0 -> Sparc.Client.SessionWaitMode
+static Sparc.Client.RingBufferMessage.FillPayload(System.Span<byte> payload) -> void
+static Sparc.Client.RingBufferMessage.IsPayloadIntact(System.ReadOnlySpan<byte> payload, int length) -> bool
+static Sparc.Client.RingBufferMessage.ReadSequence(System.ReadOnlySpan<byte> payload) -> long
+static Sparc.Client.RingBufferMessage.ReadTimestamp(System.ReadOnlySpan<byte> payload) -> long
+static Sparc.Client.RingBufferMessage.Write(System.Span<byte> payload, long sequence, long timestamp) -> void
+static Sparc.Client.SessionNotification.CreateInProcess() -> Sparc.Client.SessionNotification!
+static Sparc.Client.SessionNotification.CreateNamed(string! regionName) -> Sparc.Client.SessionNotification!

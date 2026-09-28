@@ -1,1 +1,16 @@
 #nullable enable
+Sparc.Testing.ChannelTestExtensions
+Sparc.Testing.TestSparcChannel
+Sparc.Testing.TestSparcRing
+Sparc.Testing.TestSparcRing.Consumer.get -> Sparc.Core.IConsumerEndpoint!
+Sparc.Testing.TestSparcRing.CreateConsumerSession(Sparc.Client.ConsumerSessionOptions? options = null) -> Sparc.Client.ConsumerSession!
+Sparc.Testing.TestSparcRing.CreateProducerSession(Sparc.Client.ProducerSessionOptions? options = null) -> Sparc.Client.ProducerSession!
+Sparc.Testing.TestSparcRing.Dispose() -> void
+Sparc.Testing.TestSparcRing.Name.get -> string!
+Sparc.Testing.TestSparcRing.Producer.get -> Sparc.Core.IProducerEndpoint!
+Sparc.Testing.TestSparcRing.TimeProvider.get -> System.TimeProvider!
+static Sparc.Testing.ChannelTestExtensions.ReadWithTimeoutAsync<T>(this Sparc.Channels.SparcChannelReader<T>! reader, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<T>!
+static Sparc.Testing.ChannelTestExtensions.WaitToReadWithTimeoutAsync<T>(this Sparc.Channels.SparcChannelReader<T>! reader, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<bool>!
+static Sparc.Testing.ChannelTestExtensions.WriteWithTimeoutAsync<T>(this Sparc.Channels.SparcChannelWriter<T>! writer, T item, System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+static Sparc.Testing.TestSparcChannel.Create<T>(Sparc.Channels.ISparcCodec<T>! codec, int capacity = 1024, int slotSize = 0, System.TimeSpan? idleTimeout = null) -> Sparc.Channels.SparcChannel<T>!
+static Sparc.Testing.TestSparcRing.Create(int capacity = 1024, int slotSize = 256, System.TimeProvider? timeProvider = null, string? name = null) -> Sparc.Testing.TestSparcRing!

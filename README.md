@@ -77,6 +77,7 @@ in mind, and open an issue for anything that does not hold up.
 │   ├── Sparc.Channels/        typed SparcChannel<T> writer/reader with codecs
 │   ├── Sparc.Hosting/         AddSparcIpc/AddSparcChannel, hosted services, health check, metrics
 │   ├── Sparc.Testing/         paired in-memory endpoints, fake-time sessions, timeout helpers
+│   ├── Sparc.Analyzers/       Roslyn analyzer (SPARC0001: Notification without SessionNotification)
 │   ├── Sparc.Producer/        producer CLI (args → session → summary → exit code)
 │   └── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
 ├── samples/
@@ -97,16 +98,43 @@ Dependency graph (arrows = project reference):
 
 ```
 Sparc.Abstractions
-      ▲                ▲               ▲
-Sparc.Core      Sparc.InMemory   Sparc.UnixMemoryMapped
-      ▲            ▲
-Sparc.Client  Sparc.WindowsMemoryMapped
-      ▲                   ▲
+      ▲                    ▲                ▲
+Sparc.Core          Sparc.InMemory    Sparc.Analyzers (standalone)
+   ▲       ▲
+Sparc.Client  Sparc.Channels
+   ▲       ▲        ▲
+Sparc.Hosting   Sparc.Testing
+   ▲
 Sparc.Producer / Sparc.Consumer / samples/* (hosts)
 ```
 
 `Sparc.WindowsMemoryMapped`, `Sparc.UnixMemoryMapped` and `Sparc.InMemory` do not
 reference `Sparc.Core`; the ring protocol does not reference any OS type.
+`Sparc.Hosting` references both OS transports and picks one at runtime.
+
+---
+
+## Quick start (libraries)
+
+Producer process:
+
+```csharp
+builder.Services.AddSparcIpc();                                // picks the OS transport
+builder.Services.AddSparcChannel(options => options.Name = "orders");
+builder.Services.AddSparcProducerSession(options =>
+{
+    options.Count = 1_000_000;
+    options.PayloadSize = 64;
+});
+```
+
+Consumer process: the same first two lines, then
+`builder.Services.AddSparcConsumerSession(options => options.Count = 0);` to
+consume until the producer stops. `Sparc.Hosting` opens the region, claims the
+role, runs the session and disposes the endpoint on shutdown; see
+[docs/hosting.md](docs/hosting.md). Prefer a typed `Channel<T>` shape
+([docs/channels.md](docs/channels.md)) or raw zero-copy endpoints (below)? Both
+are one package away.
 
 ---
 
@@ -190,6 +218,7 @@ Reference the projects (or packages once published) you need:
 | `Sparc.Channels` | you want a typed `Channel<T>`-style async API with codecs |
 | `Sparc.Hosting` | you want DI, hosted endpoints, health checks and metrics in one registration |
 | `Sparc.Testing` | you are writing tests (paired endpoints, fake time, timeouts) |
+| `Sparc.Analyzers` | you want compile-time checks for option combinations |
 
 ### Web app / worker service / generic host
 

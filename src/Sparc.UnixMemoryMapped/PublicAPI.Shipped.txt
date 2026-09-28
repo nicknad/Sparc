@@ -1,1 +1,10 @@
 #nullable enable
+Sparc.UnixMemoryMapped.ServiceCollectionExtensions
+Sparc.UnixMemoryMapped.UnixFileMemoryMappedRegionFactory
+Sparc.UnixMemoryMapped.UnixFileMemoryMappedRegionFactory.CreateOrOpen(string! name, long size, Sparc.IpcRegionOptions? options = null) -> Sparc.IIpcMemoryRegion!
+Sparc.UnixMemoryMapped.UnixFileMemoryMappedRegionFactory.DirectoryPath.get -> string!
+Sparc.UnixMemoryMapped.UnixFileMemoryMappedRegionFactory.IsSupported.get -> bool
+Sparc.UnixMemoryMapped.UnixFileMemoryMappedRegionFactory.OpenExisting(string! name, Sparc.IpcRegionOptions? options = null) -> Sparc.IIpcMemoryRegion!
+Sparc.UnixMemoryMapped.UnixFileMemoryMappedRegionFactory.TryReset(string! name) -> bool
+Sparc.UnixMemoryMapped.UnixFileMemoryMappedRegionFactory.UnixFileMemoryMappedRegionFactory(string? directory = null) -> void
+static Sparc.UnixMemoryMapped.ServiceCollectionExtensions.AddUnixFileMemoryMappedIpc(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

@@ -4,7 +4,48 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-Pre-1.0, minor versions may contain breaking changes.
+
+## [1.0.0]
+
+### Added
+
+- **Role-typed endpoints.** `SparcRing.OpenProducer`/`OpenConsumer` return
+  `IProducerEndpoint`/`IConsumerEndpoint` (compile-time producer/consumer
+  separation), with `WriteLease`/`ReadLease` scope-based reservations and
+  blocking `Publish`/`BeginWrite`/`Read` wrappers. `SharedRingBuffer`,
+  `RingBufferRegion`, `RingBufferHeader`, `SlotFraming` and the role enum are
+  internal; the wire format is locked by golden tests and PublicAPI files.
+- **Unified error model.** `SparcException`/`SparcErrorCode` base for the
+  transport and protocol exception families, plus one `RegionName.Validate`
+  for every transport.
+- **Generalized sessions.** `PayloadWriter`/`IncludeSessionHeader` for custom
+  payloads, `Count = 0` (run until cancelled/peer stopped), `RunAsync` and
+  `WaitForPeerAsync`.
+- **`Sparc.Hosting`.** `AddSparcIpc` (OS transport selection), `AddSparcChannel`
+  (options or configuration section), hosted session services and custom
+  `ISparcProducerWorker`/`ISparcConsumerWorker` services, `SparcChannelStatus`,
+  `AddSparcHealthChecks` and the `Sparc` meter.
+- **`Sparc.Channels`.** Typed `SparcChannelWriter<T>`/`SparcChannelReader<T>`
+  and paired `SparcChannel<T>` with span-based `ISparcCodec<T>`, `JsonCodec<T>`,
+  `TryWrite` fast path, `WriteAsync` backpressure and
+  `ReadAsync`/`ReadAllAsync` streaming that ends when the producer stops.
+- **`Sparc.Testing`.** `TestSparcRing`/`TestSparcChannel`,
+  `FakeTimeProvider`-driven deterministic sessions and fail-fast timeout
+  helpers.
+- **`Sparc.Analyzers`.** SPARC0001: `SessionWaitMode.Notification` without a
+  `SessionNotification` is a compile-time error.
+- **Unix notification parity.** `SessionWaitMode.Notification` and `--notify`
+  now work on Unix-like systems through POSIX named semaphores.
+- Documentation: `docs/hosting.md`, `docs/channels.md`, `docs/testing.md`,
+  library quick starts, plus protocol golden tests and a `channel-8` regression
+  scenario.
+
+### Changed
+
+- Breaking (pre-1.0): the `IRingBufferEndpoint` seam is replaced by role-typed
+  endpoint interfaces; session option properties are settable for delegate and
+  configuration binding; the public surface of every package is locked by
+  `PublicAPI.Shipped.txt`.
 
 ## [Unreleased]
 
@@ -17,7 +58,7 @@ Pre-1.0, minor versions may contain breaking changes.
   longer allocates a destination buffer.
 - `SessionWaitMode.Notification` with `ISessionSignal`,
   `InProcessSessionSignal`, `NamedSessionSignal` and `SessionNotification`;
-  CLIs expose `--notify` (Windows).
+  CLIs expose `--notify`.
 - Unix file-backed transport (`Sparc.UnixMemoryMapped`) with owner-only region
   files and `AddUnixFileMemoryMappedIpc()`.
 - In-process performance regression harness (`--regression`) and lease-API
