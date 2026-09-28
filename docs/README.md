@@ -35,7 +35,7 @@ Suggested reading order for a newcomer: `concept.md` -> `use-cases.md` ->
 | Host integration: DI, hosted services, health, metrics | `src/Sparc.Hosting` |
 | Test harness (paired endpoints, fake time, timeouts) | `src/Sparc.Testing` |
 | Roslyn analyzer (option combinations) | `src/Sparc.Analyzers` |
-| Producer/consumer CLIs | `src/Sparc.Producer`, `src/Sparc.Consumer` |
+| Producer/consumer CLIs | `tools/Sparc.Producer`, `tools/Sparc.Consumer` |
 | Hosts | `samples/Sparc.WebApp`, `samples/yarp/*` |
 | Verification | `tests/Sparc.UnitTests`, `tests/Sparc.ConcurrencyTests`, `tests/Sparc.ProcessTests` |
 | Measurement | `benchmarks/Sparc.Benchmarks` |

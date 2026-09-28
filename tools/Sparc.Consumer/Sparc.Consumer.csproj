@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Sparc.Consumer</RootNamespace>
+    <AssemblyName>Sparc.Consumer</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\CommandLineUtil.cs" Link="CommandLineUtil.cs" />
+    <Compile Include="..\Shared\RingBufferExitCodes.cs" Link="RingBufferExitCodes.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sparc.Core\Sparc.Core.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Client\Sparc.Client.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.UnixMemoryMapped\Sparc.UnixMemoryMapped.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.WindowsMemoryMapped\Sparc.WindowsMemoryMapped.csproj" />
+  </ItemGroup>
+
+</Project>

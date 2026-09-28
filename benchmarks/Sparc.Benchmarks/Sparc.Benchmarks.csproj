@@ -20,8 +20,8 @@
     <ProjectReference Include="..\..\src\Sparc.Channels\Sparc.Channels.csproj" />
     <ProjectReference Include="..\..\src\Sparc.Client\Sparc.Client.csproj" />
     <ProjectReference Include="..\..\src\Sparc.InMemory\Sparc.InMemory.csproj" />
-    <ProjectReference Include="..\..\src\Sparc.Producer\Sparc.Producer.csproj" />
-    <ProjectReference Include="..\..\src\Sparc.Consumer\Sparc.Consumer.csproj" />
+    <ProjectReference Include="..\..\tools\Sparc.Producer\Sparc.Producer.csproj" />
+    <ProjectReference Include="..\..\tools\Sparc.Consumer\Sparc.Consumer.csproj" />
   </ItemGroup>
 
 </Project>

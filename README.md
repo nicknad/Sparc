@@ -64,7 +64,7 @@ in mind, and open an issue for anything that does not hold up.
 
 ```
 .
-├── Sparc.slnx                library solution: src, tests, benchmarks
+├── Sparc.slnx                library solution: src, tools, tests, benchmarks
 ├── Sparc.Samples.slnx        samples solution: samples/ (intentionally not in Sparc.slnx)
 ├── docs/                     concept, use cases, mechanics, performance invariants, benchmarking
 ├── src/
@@ -77,9 +77,11 @@ in mind, and open an issue for anything that does not hold up.
 │   ├── Sparc.Channels/        typed SparcChannel<T> writer/reader with codecs
 │   ├── Sparc.Hosting/         AddSparcIpc/AddSparcChannel, hosted services, health check, metrics
 │   ├── Sparc.Testing/         paired in-memory endpoints, fake-time sessions, timeout helpers
-│   ├── Sparc.Analyzers/       Roslyn analyzer (SPARC0001: Notification without SessionNotification)
+│   └── Sparc.Analyzers/       Roslyn analyzer (SPARC0001: Notification without SessionNotification)
+├── tools/
 │   ├── Sparc.Producer/        producer CLI (args → session → summary → exit code)
-│   └── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
+│   ├── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
+│   └── Shared/                source-only CLI helpers linked into both executables
 ├── samples/
 │   ├── Sparc.WebApp/          minimal API + BackgroundService hosting both session roles
 │   └── yarp/
@@ -105,7 +107,12 @@ Sparc.Client  Sparc.Channels
    ▲       ▲        ▲
 Sparc.Hosting   Sparc.Testing
    ▲
-Sparc.Producer / Sparc.Consumer / samples/* (hosts)
+tools/Sparc.Producer / tools/Sparc.Consumer / samples/* (hosts)
+```
+
+`src/` holds the libraries only; the CLIs under `tools/` are executables (not
+packages) used by the process tests, the cross-process benchmark harness and the
+CLI quick start below.
 ```
 
 `Sparc.WindowsMemoryMapped`, `Sparc.UnixMemoryMapped` and `Sparc.InMemory` do not
@@ -146,10 +153,10 @@ dotnet test  Sparc.slnx -c Release
 dotnet build Sparc.Samples.slnx -c Release    # samples live in a separate solution
 
 # terminal 1
-dotnet run -c Release --project src/Sparc.Consumer -- --name demo --count 1000000
+dotnet run -c Release --project tools/Sparc.Consumer -- --name demo --count 1000000
 
 # terminal 2
-dotnet run -c Release --project src/Sparc.Producer  -- --name demo --count 1000000 --size 64
+dotnet run -c Release --project tools/Sparc.Producer  -- --name demo --count 1000000 --size 64
 ```
 
 Builds treat warnings as errors (`TreatWarningsAsErrors` in `Directory.Build.props`).

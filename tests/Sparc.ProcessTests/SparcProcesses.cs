@@ -15,10 +15,10 @@ internal static class SparcProcesses
 #endif
 
     public static string ProducerDll { get; } = Path.Combine(
-        RepoRoot, "src", "Sparc.Producer", "bin", Configuration, "net11.0", "Sparc.Producer.dll");
+        RepoRoot, "tools", "Sparc.Producer", "bin", Configuration, "net11.0", "Sparc.Producer.dll");
 
     public static string ConsumerDll { get; } = Path.Combine(
-        RepoRoot, "src", "Sparc.Consumer", "bin", Configuration, "net11.0", "Sparc.Consumer.dll");
+        RepoRoot, "tools", "Sparc.Consumer", "bin", Configuration, "net11.0", "Sparc.Consumer.dll");
 
     public static string NewName() => "spsc-proc-" + Guid.NewGuid().ToString("N");
 

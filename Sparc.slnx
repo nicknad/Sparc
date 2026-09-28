@@ -10,11 +10,13 @@
     <Project Path="src/Sparc.UnixMemoryMapped/Sparc.UnixMemoryMapped.csproj" />
     <Project Path="src/Sparc.WindowsMemoryMapped/Sparc.WindowsMemoryMapped.csproj" />
     <Project Path="src/Sparc.Client/Sparc.Client.csproj" />
-    <Project Path="src/Sparc.Consumer/Sparc.Consumer.csproj" />
     <Project Path="src/Sparc.Core/Sparc.Core.csproj" />
     <Project Path="src/Sparc.Hosting/Sparc.Hosting.csproj" />
     <Project Path="src/Sparc.Testing/Sparc.Testing.csproj" />
-    <Project Path="src/Sparc.Producer/Sparc.Producer.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Sparc.Consumer/Sparc.Consumer.csproj" />
+    <Project Path="tools/Sparc.Producer/Sparc.Producer.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Sparc.ConcurrencyTests/Sparc.ConcurrencyTests.csproj" />

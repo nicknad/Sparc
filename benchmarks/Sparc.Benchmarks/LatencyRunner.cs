@@ -279,8 +279,8 @@ internal static class LatencyRunner
         const string configuration = "Release";
 #endif
 
-        string producerDll = Path.Combine(repoRoot, "src", "Sparc.Producer", "bin", configuration, "net11.0", "Sparc.Producer.dll");
-        string consumerDll = Path.Combine(repoRoot, "src", "Sparc.Consumer", "bin", configuration, "net11.0", "Sparc.Consumer.dll");
+        string producerDll = Path.Combine(repoRoot, "tools", "Sparc.Producer", "bin", configuration, "net11.0", "Sparc.Producer.dll");
+        string consumerDll = Path.Combine(repoRoot, "tools", "Sparc.Consumer", "bin", configuration, "net11.0", "Sparc.Consumer.dll");
 
         List<string> producerArgs =
         [
