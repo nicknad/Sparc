@@ -243,7 +243,8 @@ with structured outcomes.
   observable even if the other side runs a different mode. A lost or spurious
   raise only costs one slice, because the waiter always re-checks the buffer.
 * Implementations: `InProcessSessionSignal` (auto-reset event, any platform,
-  same-process hosts) and `NamedSessionSignal` (named semaphore, Windows-only).
+  same-process hosts) and `NamedSessionSignal` (named OS semaphore: Windows
+  semaphores, POSIX named semaphores on Unix-like systems).
   The CLIs wire `--notify` through `SessionNotification.CreateNamed(regionName)`.
 
 ## 8. Platform implementations

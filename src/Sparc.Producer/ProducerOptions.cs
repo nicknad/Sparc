@@ -53,7 +53,7 @@ internal sealed class ProducerOptions
           --delay-us <us>          Pause between published messages (slow-producer simulation, default: 0).
           --takeover               Claim the producer role from a crashed peer.
           --spin-only              Busy-spin instead of sleeping while the buffer is full.
-          --notify                 Block on an OS signal while full (Windows; needs a matching
+          --notify                 Block on an OS signal while full (needs a matching
                                    --notify consumer). Near-spin latency, no busy core.
           --recreate-stale         Delete and recreate an incompatible/stale region (destructive).
           --require-existing       Never create the region; fail if it does not exist.

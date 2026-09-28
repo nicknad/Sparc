@@ -46,7 +46,7 @@ internal sealed class ConsumerOptions
           --delay-us <us>          Pause between consumed messages (slow-consumer/backpressure simulation, default: 0).
           --takeover               Claim the consumer role from a crashed peer.
           --spin-only              Busy-spin instead of sleeping while the buffer is empty.
-          --notify                 Block on an OS signal while empty (Windows; needs a matching
+          --notify                 Block on an OS signal while empty (needs a matching
                                    --notify producer). Near-spin latency, no busy core.
           --recreate-stale         Delete and recreate an incompatible/stale region (destructive).
           --require-existing       Never create the region; fail if it does not exist.

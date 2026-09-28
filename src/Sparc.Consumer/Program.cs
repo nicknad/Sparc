@@ -106,17 +106,8 @@ internal static class Program
         return MapReason(result.Reason);
     }
 
-    private static SessionNotification CreateNotification(string regionName)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            throw new RingBufferPlatformNotSupportedException(
-                "--notify uses named OS semaphores, which .NET supports on Windows only; " +
-                "use --spin-only on this platform.");
-        }
-
-        return SessionNotification.CreateNamed(regionName);
-    }
+    private static SessionNotification CreateNotification(string regionName) =>
+        SessionNotification.CreateNamed(regionName);
 
     private static int MapReason(SessionStopReason reason) => reason switch
     {

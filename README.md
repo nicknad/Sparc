@@ -319,8 +319,8 @@ is full/empty is `SessionWaitMode` (CLI: `--spin-only`, `--notify`):
 
 `Notification` needs a `SessionNotification` shared by both endpoints
 (`CreateInProcess()` when both roles share a process, `CreateNamed(regionName)` across
-processes). Named latches use named semaphores, which .NET supports on Windows only; on
-Unix-like systems use the other modes for now. The peer only raises the latch when the
+processes). Named latches use named OS semaphores: `Semaphore` on Windows, POSIX
+named semaphores on Unix-like systems. The peer only raises the latch when the
 other side has declared itself waiting (the `ConsumerWaiting`/`ProducerWaiting` header
 flags), so a running peer pays nothing; the waiter always re-checks the buffer, so a lost
 raise only means falling back to a bounded poll slice.
@@ -734,7 +734,7 @@ Same harness with one endpoint paced (`--delay-us`); rates in msg/s, latencies i
   *idle-detection* latency — 5.1 ms p50 — because `SpinWait` yields and then sleeps rather
   than busy-spinning. Both alternatives were measured on the same scenario: `--spin-only`
   cuts p50 to 3.9 µs at the cost of a busy core while the peer is idle, and `--notify`
-  (Windows) blocks on an OS latch for a p50 of 7.6 µs at ~2 % consumer CPU. This is the
+  `--notify` blocks on an OS latch for a p50 of 7.6 µs at ~2 % consumer CPU. This is the
   number that matters most for telemetry consumers.
 * **Producer ≈ consumer**: throughput tracks the slower side, and latency sits at the queue
   operating point (the startup backlog fills the 1024-slot buffer before both ends settle).

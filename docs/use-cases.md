@@ -22,7 +22,7 @@ The classic fit: an application process samples counters, timings, or events and
 a separate collector/agent process aggregates, forwards, or writes them.
 
 * Producer: the application, on a dedicated thread (never the request thread).
-* Consumer: the agent; use `SessionWaitMode.Notification` (Windows) or
+* Consumer: the agent; use `SessionWaitMode.Notification` or
   `SpinOnly` if the agent must react in microseconds, otherwise the default.
 * Slot: `[sequence][timestamp][sample bytes]`; the timestamp enables one-way
   latency percentiles via the built-in histogram.
@@ -86,7 +86,7 @@ The wait mode is a first-class knob (`SessionWaitMode`, CLI `--spin-only` /
 |---|---|---|---|
 | `SpinThenSleep` (default) | ~0 | ~5 ms | Throughput pipelines, batch consumers |
 | `SpinOnly` | 1 core | ~microseconds | Dedicated core available, lowest latency |
-| `Notification` | ~0 | ~microseconds | Lowest latency without pinning a core (Windows) |
+| `Notification` | ~0 | ~microseconds | Lowest latency without pinning a core |
 
 Measured on the paced-producer scenario in this repo: p50 goes from 6.45 ms
 (default) to 3.9 us (`SpinOnly`) and 7.6 us (`Notification`). See

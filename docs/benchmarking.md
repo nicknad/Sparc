@@ -142,7 +142,7 @@ The last row is the one the wait modes target:
 | `--spin-only` | 3.9 us | pinned core |
 | `--notify` | 7.6 us | ~2% |
 
-`--notify` uses named semaphores and is Windows-only.
+`--notify` uses named OS semaphores (Windows semaphores, POSIX named semaphores on Unix).
 
 ---
 

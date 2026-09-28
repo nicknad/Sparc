@@ -38,8 +38,11 @@ SPARC is an intra-machine, same-trust-domain transport. The following are
   guessable by design. Use names that are unique per deployment.
 * Endpoint states are advisory. A hard-killed process leaves `Running`; peers
   rely on timeouts.
-* `SessionWaitMode.Notification` uses named semaphores, which are supported on
-  Windows only.
+* `SessionWaitMode.Notification` uses named OS semaphores (named `Semaphore`
+  objects on Windows, POSIX named semaphores on Unix-like systems). The POSIX
+  semaphores are created with owner-only permissions (0600) and are not unlinked
+  on dispose, matching the persistent region files; a stale raise is harmless
+  because waiters always re-check the buffer.
 * On Unix, region files are created under `<temp>/sparc` with owner-only
   permissions; a shared directory supplied by the caller keeps its existing
   permissions.

@@ -32,8 +32,8 @@ public sealed class SessionNotification : IDisposable
 
     /// <summary>
     /// Creates a cross-process pair of named OS latches derived from the region
-    /// name. Windows only; throws <see cref="PlatformNotSupportedException"/>
-    /// elsewhere.
+    /// name: Windows named semaphores on Windows, POSIX named semaphores on
+    /// Unix-like systems. The host owns the pair.
     /// </summary>
     /// <param name="regionName">Name of the ring region both endpoints share.</param>
     public static SessionNotification CreateNamed(string regionName)

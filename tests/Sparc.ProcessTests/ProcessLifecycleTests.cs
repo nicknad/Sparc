@@ -96,11 +96,6 @@ public class ProcessLifecycleTests(ITestOutputHelper output)
     [Fact]
     public async Task NotifyMode_FullRoundTrip()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            return; // named semaphores are Windows-only
-        }
-
         string name = SparcProcesses.NewName();
         Process? consumer = null;
         Process? producer = null;

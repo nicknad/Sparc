@@ -8,7 +8,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <Version>0.7.0</Version>
+    <Version>0.8.0</Version>
     <Authors>nicknad</Authors>
     <Copyright>Copyright (c) 2026 nicknad</Copyright>
   </PropertyGroup>
