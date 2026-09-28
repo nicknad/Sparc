@@ -51,6 +51,7 @@ in mind, and open an issue for anything that does not hold up.
 
 * [docs/hosting.md](docs/hosting.md) — DI, hosted session/worker services, health checks, metrics, configuration.
 * [docs/channels.md](docs/channels.md) — the typed `SparcChannel<T>` layer: codecs, async API, semantics, overhead.
+* [docs/streaming.md](docs/streaming.md) — chunked streaming: messages larger than a slot (or the ring) through `SparcStreamWriter`/`SparcStreamReader`.
 * [docs/testing.md](docs/testing.md) — the `Sparc.Testing` harness: paired endpoints, fake time, timeout helpers.
 * [docs/concept.md](docs/concept.md) — the problem, the core idea, guarantees, and how it compares to pipes/sockets/queues.
 * [docs/use-cases.md](docs/use-cases.md) — when to use it, sample patterns, anti-patterns, sizing.
@@ -76,7 +77,7 @@ in mind, and open an issue for anything that does not hold up.
 │   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
 │   ├── Sparc.Channels/        typed SparcChannel<T> writer/reader with codecs
 │   ├── Sparc.Hosting/         AddSparcIpc/AddSparcChannel, hosted services, health check, metrics
-│   ├── Sparc.Serialization/   ISparcCodec<T> adapter for SerializerFoundation serializers
+│   ├── Sparc.Serialization/   ISparcCodec<T> adapter + chunked streaming for SerializerFoundation serializers
 │   ├── Sparc.Testing/         paired in-memory endpoints, fake-time sessions, timeout helpers
 │   └── Sparc.Analyzers/       Roslyn analyzer (SPARC0001: Notification without SessionNotification)
 ├── tools/
@@ -225,7 +226,7 @@ Reference the projects (or packages once published) you need:
 | `Sparc.Core` | you need the role-typed endpoints (`SparcRing`, `IProducerEndpoint`, `IConsumerEndpoint`) or the in-process `SpscRingBuffer` |
 | `Sparc.Client` | you need producer/consumer sessions and verification |
 | `Sparc.Channels` | you want a typed `Channel<T>`-style async API with codecs |
-| `Sparc.Serialization` | you use a serializer built on SerializerFoundation and want it plugged into a typed channel |
+| `Sparc.Serialization` | you use a serializer built on SerializerFoundation and want it plugged into a typed channel, or chunked messages larger than one slot |
 | `Sparc.Hosting` | you want DI, hosted endpoints, health checks and metrics in one registration |
 | `Sparc.Testing` | you are writing tests (paired endpoints, fake time, timeouts) |
 | `Sparc.Analyzers` | you want compile-time checks for option combinations |

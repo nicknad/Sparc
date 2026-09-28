@@ -18,4 +18,8 @@
     <PackageReference Include="SerializerFoundation" Version="1.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sparc.UnitTests" />
+  </ItemGroup>
+
 </Project>

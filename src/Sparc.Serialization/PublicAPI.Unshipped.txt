@@ -6,3 +6,24 @@ Sparc.Serialization.SfCodec<T>.MaxSize.get -> int
 Sparc.Serialization.SfCodec<T>.SfCodec(int maxSize, Sparc.Serialization.SfSerializer<T>! serialize, Sparc.Serialization.SfDeserializer<T>! deserialize) -> void
 Sparc.Serialization.SfDeserializer<T>
 Sparc.Serialization.SfSerializer<T>
+Sparc.Serialization.SparcStreamReader
+Sparc.Serialization.SparcStreamReader.Dispose() -> void
+Sparc.Serialization.SparcStreamReader.Endpoint.get -> Sparc.Core.IConsumerEndpoint!
+Sparc.Serialization.SparcStreamReader.Name.get -> string!
+Sparc.Serialization.SparcStreamReader.ReadMessage(System.Span<byte> destination, out int type, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> int
+Sparc.Serialization.SparcStreamReader.SparcStreamReader(Sparc.Core.IConsumerEndpoint! endpoint) -> void
+Sparc.Serialization.SparcStreamWriteBuffer
+Sparc.Serialization.SparcStreamWriteBuffer.Advance(int bytesWritten) -> void
+Sparc.Serialization.SparcStreamWriteBuffer.BytesWritten.get -> long
+Sparc.Serialization.SparcStreamWriteBuffer.Dispose() -> void
+Sparc.Serialization.SparcStreamWriteBuffer.Flush() -> void
+Sparc.Serialization.SparcStreamWriteBuffer.GetSpan(int sizeHint = 0) -> System.Span<byte>
+Sparc.Serialization.SparcStreamWriteBuffer.SparcStreamWriteBuffer() -> void
+Sparc.Serialization.SparcStreamWriter
+Sparc.Serialization.SparcStreamWriter.BeginMessage(int type) -> Sparc.Serialization.SparcStreamWriteBuffer
+Sparc.Serialization.SparcStreamWriter.Dispose() -> void
+Sparc.Serialization.SparcStreamWriter.Endpoint.get -> Sparc.Core.IProducerEndpoint!
+Sparc.Serialization.SparcStreamWriter.Name.get -> string!
+Sparc.Serialization.SparcStreamWriter.SparcStreamWriter(Sparc.Core.IProducerEndpoint! endpoint) -> void
+static Sparc.Serialization.SparcStreamReader.Open(Sparc.IIpcMemoryRegionFactory! factory, string! name, int capacity = 1024, int slotSize = 256, Sparc.Core.SharedRingBufferOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Sparc.Serialization.SparcStreamReader!
+static Sparc.Serialization.SparcStreamWriter.Open(Sparc.IIpcMemoryRegionFactory! factory, string! name, int capacity = 1024, int slotSize = 256, Sparc.Core.SharedRingBufferOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Sparc.Serialization.SparcStreamWriter!

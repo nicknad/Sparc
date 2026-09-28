@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Chunked message streaming.** `SparcStreamWriter`/`SparcStreamReader` and
+  `SparcStreamWriteBuffer` (`IWriteBuffer`) publish and reassemble messages
+  larger than one slot — larger than the ring, even — as `First`/`Last` chunk
+  chains, with reader resynchronization after interrupted messages. The raw
+  reservation behind it is public: `IProducerEndpoint.TryReserveWrite(int,
+  out Span<byte>)` and `CommitWrite(int length)`.
 - **`Sparc.Serialization`.** Optional `ISparcCodec<T>` adapter (`SfCodec<T>`)
   that runs SerializerFoundation-based serializers directly over the channel
   writer's destination span and a slot's payload span, with no per-message

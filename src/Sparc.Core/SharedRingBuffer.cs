@@ -309,7 +309,42 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
     }
 
     /// <inheritdoc />
+    public bool TryReserveWrite(int type, out Span<byte> payload)
+    {
+        ThrowIfDisposed();
+
+        if (_hasPendingWrite)
+        {
+            throw new InvalidOperationException("A write reservation is already active.");
+        }
+
+        if (!TryAcquireWriteSlot(out long tail, out int offset))
+        {
+            payload = default;
+            return false; // full
+        }
+
+        unsafe
+        {
+            payload = new Span<byte>(_slots + offset + RingBufferLayout.MessageHeaderSize, MaxPayloadSize);
+        }
+
+        _pendingOffset = offset;
+        _pendingTail = tail;
+        _pendingLength = MaxPayloadSize;
+        _pendingType = type;
+        _hasPendingWrite = true;
+        return true;
+    }
+
+    /// <inheritdoc />
     public void CommitWrite()
+    {
+        CommitWrite(_pendingLength);
+    }
+
+    /// <inheritdoc />
+    public void CommitWrite(int length)
     {
         ThrowIfDisposed();
 
@@ -318,12 +353,19 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
             throw new InvalidOperationException("No write reservation is active.");
         }
 
+        if ((uint)length > (uint)_pendingLength)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(length), length,
+                $"Payload of {length} bytes exceeds the reserved {_pendingLength} bytes.");
+        }
+
         _hasPendingWrite = false;
         Debug.Assert((long)_pendingOffset + SlotSize <= _region.Size - RingBufferLayout.HeaderSize);
         unsafe
         {
             Span<byte> slot = new(_slots + _pendingOffset, SlotSize);
-            BinaryPrimitives.WriteInt32LittleEndian(slot, _pendingLength);
+            BinaryPrimitives.WriteInt32LittleEndian(slot, length);
             BinaryPrimitives.WriteInt32LittleEndian(slot[sizeof(int)..], _pendingType);
         }
 

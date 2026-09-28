@@ -30,16 +30,31 @@ public interface IProducerEndpoint : IEndpoint
     /// <summary>
     /// Reserves the next slot and returns a writable view of its payload area,
     /// so a message can be written without an intermediate copy. Returns false
-    /// when the buffer is full. Commit or abandon through <see cref="CommitWrite"/> /
+    /// when the buffer is full. Commit or abandon through <see cref="CommitWrite()"/> /
     /// <see cref="AbandonWrite"/>, or use <see cref="TryBeginWrite"/> for a
     /// scope-based lease.
     /// </summary>
     bool TryReserveWrite(int type, int length, out Span<byte> payload);
 
-    /// <summary>Publishes the slot reserved by <see cref="TryReserveWrite"/>.</summary>
+    /// <summary>
+    /// Reserves the next slot with its full payload window, for writers that do
+    /// not know the final size up front (for example a chunked stream writer).
+    /// Publish with <see cref="CommitWrite(int)"/> or discard with
+    /// <see cref="AbandonWrite"/>.
+    /// </summary>
+    bool TryReserveWrite(int type, out Span<byte> payload);
+
+    /// <summary>Publishes the slot reserved by <see cref="TryReserveWrite(int, int, out Span{byte})"/>.</summary>
     void CommitWrite();
 
-    /// <summary>Discards the slot reserved by <see cref="TryReserveWrite"/> without publishing it.</summary>
+    /// <summary>
+    /// Publishes the first <paramref name="length"/> bytes of the active
+    /// reservation; <paramref name="length"/> must not exceed the reserved size
+    /// (for a full-window reservation, <see cref="IEndpoint.MaxPayloadSize"/>).
+    /// </summary>
+    void CommitWrite(int length);
+
+    /// <summary>Discards the slot reserved by <see cref="TryReserveWrite(int, int, out Span{byte})"/> without publishing it.</summary>
     void AbandonWrite();
 
     /// <summary>

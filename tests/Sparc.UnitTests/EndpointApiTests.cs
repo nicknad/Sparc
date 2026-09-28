@@ -30,6 +30,49 @@ public class EndpointApiTests
     }
 
     [Fact]
+    public void RawReservationPublishesTheCommittedPrefix()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using IProducerEndpoint producer = SparcRing.OpenProducer(
+            factory, name, 4, 64, cancellationToken: TestContext.Current.CancellationToken);
+        using IConsumerEndpoint consumer = SparcRing.OpenConsumer(
+            factory, name, 4, 64, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(producer.TryReserveWrite(7, out Span<byte> payload));
+        Assert.Equal(producer.MaxPayloadSize, payload.Length);
+        payload[0] = 4;
+        payload[1] = 5;
+        payload[2] = 6;
+        producer.CommitWrite(3);
+
+        Span<byte> destination = new byte[consumer.MaxPayloadSize];
+        Assert.True(consumer.TryRead(destination, out int bytesRead, out int type));
+        Assert.Equal(3, bytesRead);
+        Assert.Equal(7, type);
+        Assert.Equal(new byte[] { 4, 5, 6 }, destination[..bytesRead].ToArray());
+    }
+
+    [Fact]
+    public void CommitLengthBeyondTheReservationThrowsAndKeepsItActive()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using IProducerEndpoint producer = SparcRing.OpenProducer(
+            factory, name, 4, 64, cancellationToken: TestContext.Current.CancellationToken);
+        using IConsumerEndpoint consumer = SparcRing.OpenConsumer(
+            factory, name, 4, 64, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(producer.TryReserveWrite(1, 2, out _));
+        Assert.Throws<ArgumentOutOfRangeException>(() => producer.CommitWrite(3));
+
+        producer.CommitWrite();
+        Span<byte> destination = new byte[consumer.MaxPayloadSize];
+        Assert.True(consumer.TryRead(destination, out int bytesRead, out _));
+        Assert.Equal(2, bytesRead);
+    }
+
+    [Fact]
     public void WriteLeaseCommitsOnDispose()
     {
         InMemoryMemoryRegionFactory factory = new();

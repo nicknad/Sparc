@@ -1,1 +1,3 @@
 #nullable enable
+Sparc.Core.IProducerEndpoint.CommitWrite(int length) -> void
+Sparc.Core.IProducerEndpoint.TryReserveWrite(int type, out System.Span<byte> payload) -> bool
