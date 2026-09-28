@@ -29,6 +29,10 @@ namespace Sparc.Serialization;
 /// mixing the messages (use <see cref="SparcStreamReader.ReadMessage"/> for
 /// restart-resilient reads).
 /// </para>
+/// <para>
+/// <c>scratch</c> only needs to fit the largest window that crosses a chunk
+/// seam; windows that fit the current chunk are served in place.
+/// </para>
 /// </remarks>
 [StructLayout(LayoutKind.Auto)]
 public ref struct SparcStreamReadBuffer
@@ -79,7 +83,7 @@ public ref struct SparcStreamReadBuffer
     public long BytesConsumed => _bytesConsumed;
 
     /// <summary>True when every byte of the message has been consumed.</summary>
-    public bool IsMessageComplete => _endReached && _scratchStart == _scratchEnd;
+    public bool IsMessageComplete => !_disposed && _endReached && _scratchStart == _scratchEnd;
 
     internal static SparcStreamReadBuffer Begin(
         IConsumerEndpoint endpoint, Span<byte> scratch, TimeSpan timeout, CancellationToken cancellationToken)
@@ -126,20 +130,28 @@ public ref struct SparcStreamReadBuffer
     public ReadOnlySpan<byte> GetUnreadSpan()
     {
         ThrowIfDisposed();
+        Debug.Assert(_scratchStart <= _scratchEnd);
+
         if (_scratchStart < _scratchEnd)
         {
             return _scratch[_scratchStart.._scratchEnd];
         }
 
         EnsureLease();
-        return _hasLease ? _lease.Payload[_leaseOffset..] : default;
+        if (!_hasLease)
+        {
+            return default;
+        }
+
+        Debug.Assert(_leaseOffset >= ChunkFraming.HeaderSize && _leaseOffset <= _lease.Payload.Length);
+        return _lease.Payload[_leaseOffset..];
     }
 
     /// <summary>
     /// Returns a contiguous window of at least <paramref name="sizeHint"/> bytes,
     /// stitching chunk seams into the scratch buffer as needed, or false when
-    /// the message ends first. Never consumes. The window must fit the scratch
-    /// buffer.
+    /// the message ends first. Never consumes. A stitched window must fit the
+    /// scratch buffer.
     /// </summary>
     public bool TryGetSpan(int sizeHint, out ReadOnlySpan<byte> span)
     {
@@ -152,10 +164,29 @@ public ref struct SparcStreamReadBuffer
             return true;
         }
 
-        if (_scratchEnd - _scratchStart >= sizeHint)
+        int scratchAvailable = _scratchEnd - _scratchStart;
+        if (scratchAvailable >= sizeHint)
         {
             span = _scratch[_scratchStart.._scratchEnd];
             return true;
+        }
+
+        if (scratchAvailable == 0)
+        {
+            // Contiguous fast path: no stitched bytes to preserve, so a window
+            // inside the current chunk needs no scratch at all.
+            EnsureLease();
+            if (!_hasLease)
+            {
+                span = default;
+                return false;
+            }
+
+            if (_lease.Payload.Length - _leaseOffset >= sizeHint)
+            {
+                span = _lease.Payload[_leaseOffset..];
+                return true;
+            }
         }
 
         if (sizeHint > _scratch.Length)
@@ -170,6 +201,7 @@ public ref struct SparcStreamReadBuffer
             return false;
         }
 
+        Debug.Assert(_scratchEnd - _scratchStart >= sizeHint);
         span = _scratch[_scratchStart.._scratchEnd];
         return true;
     }
@@ -179,6 +211,7 @@ public ref struct SparcStreamReadBuffer
     {
         ThrowIfDisposed();
         ArgumentOutOfRangeException.ThrowIfNegative(bytesConsumed);
+        Debug.Assert(_scratchStart <= _scratchEnd);
 
         int scratchAvailable = _scratchEnd - _scratchStart;
         int leaseAvailable = _hasLease ? _lease.Payload.Length - _leaseOffset : 0;
@@ -207,6 +240,8 @@ public ref struct SparcStreamReadBuffer
         }
 
         _bytesConsumed += bytesConsumed;
+        Debug.Assert(_scratchStart <= _scratchEnd);
+        Debug.Assert(!_hasLease || _leaseOffset <= _lease.Payload.Length);
     }
 
     /// <summary>
@@ -220,6 +255,30 @@ public ref struct SparcStreamReadBuffer
         if (destination.Length == 0)
         {
             return;
+        }
+
+        int scratchAvailable = _scratchEnd - _scratchStart;
+        if (scratchAvailable >= destination.Length)
+        {
+            _scratch.Slice(_scratchStart, destination.Length).CopyTo(destination);
+            return;
+        }
+
+        if (scratchAvailable == 0)
+        {
+            // Contiguous fast path: copy straight from the chunk, no scratch.
+            EnsureLease();
+            if (!_hasLease)
+            {
+                throw new InvalidOperationException(
+                    $"The message has fewer than {destination.Length} bytes left; the copy was not started.");
+            }
+
+            if (_lease.Payload.Length - _leaseOffset >= destination.Length)
+            {
+                _lease.Payload.Slice(_leaseOffset, destination.Length).CopyTo(destination);
+                return;
+            }
         }
 
         if (destination.Length > _scratch.Length)
@@ -270,7 +329,6 @@ public ref struct SparcStreamReadBuffer
 
     private void EnsureLease()
     {
-        ThrowIfDisposed();
         if (_hasLease || _endReached)
         {
             return;
@@ -281,8 +339,12 @@ public ref struct SparcStreamReadBuffer
             throw new InvalidOperationException("No stream message is active.");
         }
 
+        Debug.Assert(!_hasLease && !_endReached);
         ReadLease lease = LeaseNext(_endpoint, _timeout, _cancellationToken);
         int flags = ChunkFraming.ReadFlags(lease.Payload);
+
+        // A First chunk here means the producer restarted mid-message; mixing
+        // the two messages silently would be worse than truncating.
         if ((flags & ChunkFraming.FirstFlag) != 0)
         {
             lease.Dispose();
@@ -311,6 +373,7 @@ public ref struct SparcStreamReadBuffer
     private bool TryFillScratch(int needed)
     {
         Debug.Assert(needed <= _scratch.Length);
+        Debug.Assert(_scratchStart <= _scratchEnd);
 
         int count = _scratchEnd - _scratchStart;
         if (count > 0 && _scratchStart > 0)
@@ -340,11 +403,10 @@ public ref struct SparcStreamReadBuffer
             }
         }
 
+        Debug.Assert(_scratchEnd - _scratchStart >= needed);
         return true;
     }
 
-    private void ThrowIfDisposed()
-    {
+    private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(_disposed, nameof(SparcStreamReadBuffer));
-    }
 }

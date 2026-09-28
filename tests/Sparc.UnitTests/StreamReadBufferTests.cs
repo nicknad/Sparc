@@ -150,7 +150,7 @@ public class StreamReadBufferTests
             bool threw = false;
             try
             {
-                buffer.TryGetSpan(32, out _);
+                buffer.TryGetSpan(40, out _);
             }
             catch (InvalidOperationException)
             {
@@ -292,6 +292,92 @@ public class StreamReadBufferTests
         {
             buffer.Dispose();
         }
+    }
+
+    [Fact]
+    public void ContiguousWindowsNeedNoScratch()
+    {
+        using StreamPair pair = new();
+        byte[] message = NewMessage(30);
+        WriteMessage(pair.Writer, type: 4, message);
+
+        SparcStreamReadBuffer buffer = pair.Reader.BeginMessage(
+            default, cancellationToken: TestContext.Current.CancellationToken);
+        try
+        {
+            byte[] destination = new byte[message.Length];
+            buffer.CopyTo(destination);
+            Assert.Equal(0, buffer.BytesConsumed);
+            Assert.True(message.AsSpan().SequenceEqual(destination));
+
+            Assert.True(buffer.TryGetSpan(message.Length, out ReadOnlySpan<byte> span));
+            Assert.True(message.AsSpan().SequenceEqual(span[..message.Length]));
+
+            buffer.Advance(message.Length);
+            Assert.True(buffer.IsMessageComplete);
+        }
+        finally
+        {
+            buffer.Dispose();
+        }
+    }
+
+    [Fact]
+    public void EndOfMessageIsReportedBeforeScratchLimits()
+    {
+        using StreamPair pair = new();
+        WriteMessage(pair.Writer, type: 0, NewMessage(20));
+
+        byte[] scratch = new byte[4];
+        SparcStreamReadBuffer buffer = pair.Reader.BeginMessage(
+            scratch, cancellationToken: TestContext.Current.CancellationToken);
+        try
+        {
+            ReadOnlySpan<byte> span = buffer.GetUnreadSpan();
+            buffer.Advance(span.Length);
+            Assert.True(buffer.IsMessageComplete);
+
+            Assert.False(buffer.TryGetSpan(64, out _));
+
+            bool threw = false;
+            string? message = null;
+            try
+            {
+                buffer.CopyTo(new byte[64]);
+            }
+            catch (InvalidOperationException exception)
+            {
+                threw = true;
+                message = exception.Message;
+            }
+
+            Assert.True(threw);
+            Assert.Contains("fewer than", message);
+        }
+        finally
+        {
+            buffer.Dispose();
+        }
+    }
+
+    [Fact]
+    public void EmptyNonLastChunkIsRejected()
+    {
+        using StreamPair pair = new();
+        PublishChunk(pair.Writer.Endpoint, type: 1, first: true, last: false, payload: []);
+
+        byte[] scratch = new byte[16];
+        bool threw = false;
+        try
+        {
+            pair.Reader.BeginMessage(scratch, cancellationToken: TestContext.Current.CancellationToken);
+        }
+        catch (RingBufferCorruptedException)
+        {
+            threw = true;
+        }
+
+        Assert.True(threw);
     }
 
     [Fact]

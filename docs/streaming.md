@@ -63,7 +63,8 @@ finally
   empty only at the end of the message.
 * `TryGetSpan(sizeHint, out span)` stitches chunk seams into `scratch` for a
   contiguous window and returns false only when the message ends first;
-  `sizeHint` must fit `scratch` or it throws.
+  `sizeHint` must fit `scratch` only when the window crosses a chunk seam —
+  windows inside the current chunk are served in place.
 * `CopyTo(destination)` copies without consuming, also across seams, and throws
   when the message has fewer bytes left.
 * `Dispose` before the end abandons the tail; the next message then starts at

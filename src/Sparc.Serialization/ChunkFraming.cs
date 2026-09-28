@@ -32,6 +32,11 @@ internal static class ChunkFraming
             throw new RingBufferCorruptedException($"Chunk declares unknown flags 0x{flags:X8}.");
         }
 
+        if ((flags & LastFlag) == 0 && chunk.Length == HeaderSize)
+        {
+            throw new RingBufferCorruptedException("Chunk has no payload but is not the message's last chunk.");
+        }
+
         return flags;
     }
 
