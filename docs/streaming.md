@@ -124,3 +124,22 @@ likewise rejects a deserializer that leaves bytes behind.
 * **One writer thread, one reader thread** per endpoint, as everywhere in
   SPARC. The buffers are single-owner: pass them by `ref`, never copy them
   (SerializerFoundation's SF002 analyzer enforces this).
+
+## Runnable sample
+
+`samples/Sparc.Serialization.Sample` defines a MessagePack-style formatter —
+LEB128 varints, zigzagged integers, length-prefixed UTF-8, a nested record —
+and streams orders through `SfStreamCodec<T>`, including one value larger than
+the ring and a simulated serialization failure:
+
+```powershell
+dotnet run -c Release --project samples/Sparc.Serialization.Sample
+```
+
+```
+small order: 61 bytes in one chunk
+large order: 1,279,119 bytes streamed through the 4,096-byte ring (20,000 items, 1,000,000 notes chars)
+producer: serialization failed after one published chunk; message aborted
+consumer: aborted message reported as corruption
+stream healthy after the abort; sample completed
+```

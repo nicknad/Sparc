@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/samples/">
+    <Project Path="samples/Sparc.Serialization.Sample/Sparc.Serialization.Sample.csproj" />
     <Project Path="samples/Sparc.WebApp/Sparc.WebApp.csproj" />
   </Folder>
   <Folder Name="/samples/yarp/">

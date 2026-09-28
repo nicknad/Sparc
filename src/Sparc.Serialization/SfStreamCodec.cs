@@ -63,7 +63,8 @@ public sealed class SfStreamCodec<T>
     /// </summary>
     /// <param name="writer">Producer end of the stream.</param>
     /// <param name="value">Value to encode.</param>
-    public void Write(SparcStreamWriter writer, T value)
+    /// <returns>The number of message bytes written across all chunks.</returns>
+    public long Write(SparcStreamWriter writer, T value)
     {
         ArgumentNullException.ThrowIfNull(writer);
         SparcStreamWriteBuffer buffer = writer.BeginMessage(MessageType);
@@ -77,7 +78,9 @@ public sealed class SfStreamCodec<T>
             throw;
         }
 
+        long written = buffer.BytesWritten;
         buffer.Dispose();
+        return written;
     }
 
     /// <summary>

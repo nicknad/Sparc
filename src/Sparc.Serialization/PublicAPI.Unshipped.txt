@@ -10,7 +10,7 @@ Sparc.Serialization.SfStreamCodec<T>
 Sparc.Serialization.SfStreamCodec<T>.MessageType.get -> int
 Sparc.Serialization.SfStreamCodec<T>.Read(Sparc.Serialization.SparcStreamReader! reader, System.Span<byte> scratch, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> T
 Sparc.Serialization.SfStreamCodec<T>.SfStreamCodec(int messageType, Sparc.Serialization.SfStreamSerializer<T>! serialize, Sparc.Serialization.SfStreamDeserializer<T>! deserialize) -> void
-Sparc.Serialization.SfStreamCodec<T>.Write(Sparc.Serialization.SparcStreamWriter! writer, T value) -> void
+Sparc.Serialization.SfStreamCodec<T>.Write(Sparc.Serialization.SparcStreamWriter! writer, T value) -> long
 Sparc.Serialization.SfStreamDeserializer<T>
 Sparc.Serialization.SfStreamSerializer<T>
 Sparc.Serialization.SparcStreamReadBuffer

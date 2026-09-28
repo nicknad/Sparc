@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Chunk-stream fuzzing.** `Sparc.FuzzTests` now covers arbitrary chunk bytes
   and flags, chunked round-trips through both readers, and corrupted chunk
   flags in a mapped region.
+- **Streaming sample.** `samples/Sparc.Serialization.Sample` streams a
+  MessagePack-style formatter through `SfStreamCodec<T>`, including a value
+  larger than the ring and a simulated serialization failure.
 - **`Sparc.Serialization`.** Optional `ISparcCodec<T>` adapter (`SfCodec<T>`)
   that runs SerializerFoundation-based serializers directly over the channel
   writer's destination span and a slot's payload span, with no per-message

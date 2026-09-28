@@ -85,6 +85,7 @@ in mind, and open an issue for anything that does not hold up.
 │   ├── Sparc.Consumer/        consumer CLI (args → session → summary → exit code)
 │   └── Shared/                source-only CLI helpers linked into both executables
 ├── samples/
+│   ├── Sparc.Serialization.Sample/  MessagePack-style formatter streamed through SfStreamCodec<T>
 │   ├── Sparc.WebApp/          minimal API + BackgroundService hosting both session roles
 │   └── yarp/
 │       ├── Sparc.YarpProxy/      YARP reverse proxy → bounded channel → SPARC producer

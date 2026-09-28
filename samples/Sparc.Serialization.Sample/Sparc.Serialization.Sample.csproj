@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Sparc.Serialization.Sample</RootNamespace>
+    <AssemblyName>Sparc.Serialization.Sample</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Sparc.InMemory\Sparc.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Serialization\Sparc.Serialization.csproj" />
+  </ItemGroup>
+
+</Project>
