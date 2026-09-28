@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net11.0</TargetFrameworks>
+    <RootNamespace>Sparc.Serialization</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>true</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Description>SerializerFoundation integration for SPARC: an ISparcCodec&lt;T&gt; adapter that runs a SerializerFoundation serializer directly over the channel's destination span and a slot's source span.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Sparc.Channels\Sparc.Channels.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SerializerFoundation" Version="1.0.0" />
+  </ItemGroup>
+
+</Project>

@@ -136,6 +136,15 @@ public class ChannelTests
             () => channel.Writer.WriteAsync(new Order(1, "much too large"), TestContext.Current.CancellationToken).AsTask());
     }
 
+    [Fact]
+    public void JsonCodecRejectsMessagesBeyondMaxSizeEvenWithLargerDestination()
+    {
+        JsonCodec<Order> codec = new(8);
+
+        Assert.Throws<InvalidOperationException>(
+            () => codec.Encode(new Order(1, "much too large"), new byte[4096]));
+    }
+
     public sealed record Order(int Id, string Sku);
 
     private sealed class Int32Codec : ISparcCodec<int>

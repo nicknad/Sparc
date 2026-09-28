@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\Sparc.Channels\Sparc.Channels.csproj" />
     <ProjectReference Include="..\..\src\Sparc.Client\Sparc.Client.csproj" />
     <ProjectReference Include="..\..\src\Sparc.Hosting\Sparc.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\Sparc.Serialization\Sparc.Serialization.csproj" />
     <ProjectReference Include="..\..\src\Sparc.Testing\Sparc.Testing.csproj" />
     <ProjectReference Include="..\..\src\Sparc.InMemory\Sparc.InMemory.csproj" />
     <ProjectReference Include="..\..\src\Sparc.UnixMemoryMapped\Sparc.UnixMemoryMapped.csproj" />

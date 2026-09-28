@@ -76,6 +76,7 @@ in mind, and open an issue for anything that does not hold up.
 │   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
 │   ├── Sparc.Channels/        typed SparcChannel<T> writer/reader with codecs
 │   ├── Sparc.Hosting/         AddSparcIpc/AddSparcChannel, hosted services, health check, metrics
+│   ├── Sparc.Serialization/   ISparcCodec<T> adapter for SerializerFoundation serializers
 │   ├── Sparc.Testing/         paired in-memory endpoints, fake-time sessions, timeout helpers
 │   └── Sparc.Analyzers/       Roslyn analyzer (SPARC0001: Notification without SessionNotification)
 ├── tools/
@@ -91,6 +92,7 @@ in mind, and open an issue for anything that does not hold up.
 ├── tests/
 │   ├── Sparc.UnitTests/       algorithm, region protocol, sessions (on Sparc.InMemory)
 │   ├── Sparc.ConcurrencyTests/ 2 × 10,000,000 message two-thread verification
+│   ├── Sparc.FuzzTests/       CsCheck property tests for the untrusted-input paths
 │   └── Sparc.ProcessTests/    two real processes: lifecycle, conflicts, kill tests
 └── benchmarks/
     └── Sparc.Benchmarks/      BenchmarkDotNet throughput suite + custom latency harness
@@ -104,8 +106,8 @@ Sparc.Abstractions
 Sparc.Core          Sparc.InMemory    Sparc.Analyzers (standalone)
    ▲       ▲
 Sparc.Client  Sparc.Channels
-   ▲       ▲        ▲
-Sparc.Hosting   Sparc.Testing
+   ▲       ▲        ▲            ▲
+Sparc.Hosting   Sparc.Testing   Sparc.Serialization
    ▲
 tools/Sparc.Producer / tools/Sparc.Consumer / samples/* (hosts)
 ```
@@ -223,6 +225,7 @@ Reference the projects (or packages once published) you need:
 | `Sparc.Core` | you need the role-typed endpoints (`SparcRing`, `IProducerEndpoint`, `IConsumerEndpoint`) or the in-process `SpscRingBuffer` |
 | `Sparc.Client` | you need producer/consumer sessions and verification |
 | `Sparc.Channels` | you want a typed `Channel<T>`-style async API with codecs |
+| `Sparc.Serialization` | you use a serializer built on SerializerFoundation and want it plugged into a typed channel |
 | `Sparc.Hosting` | you want DI, hosted endpoints, health checks and metrics in one registration |
 | `Sparc.Testing` | you are writing tests (paired endpoints, fake time, timeouts) |
 | `Sparc.Analyzers` | you want compile-time checks for option combinations |

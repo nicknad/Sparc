@@ -64,6 +64,17 @@ paths should hand-write a codec (a length-prefixed UTF-8 string, a
 the channel derives it from `MaxSize`, rounded up to a 64-byte cache line, so
 adjacent slots never share one.
 
+Serializers built on
+[SerializerFoundation](https://github.com/Cysharp/SerializerFoundation) can be
+plugged in through `SfCodec<T>` from the optional `Sparc.Serialization`
+package: the serializer writes through `IWriteBuffer` directly into the
+writer's destination span and reads through `IReadBuffer` directly from a
+slot's payload span, with no intermediate message copy. Measured on this
+machine for an 8-byte record, encode+decode, 2M iterations, single-threaded:
+`SfCodec<T>` ~81 ns/op and 0 B allocated versus `JsonCodec<T>` ~661 ns/op and
+88 B per message; through the typed channel, ~165 ns/op and 0 B. A value that
+needs more than `MaxSize` throws `InvalidOperationException`.
+
 ## API
 
 | Member | Behaviour |

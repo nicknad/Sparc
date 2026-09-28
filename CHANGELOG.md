@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`Sparc.Serialization`.** Optional `ISparcCodec<T>` adapter (`SfCodec<T>`)
+  that runs SerializerFoundation-based serializers directly over the channel
+  writer's destination span and a slot's payload span, with no per-message
+  allocations for span serializers.
+- **Fuzz tests.** `Sparc.FuzzTests` property tests for the untrusted-input
+  paths: arbitrary header/slot bytes, geometry and region-name inputs, mixed
+  copy/lease operation streams against a queue oracle, and a hostile peer
+  corrupting a published slot.
+
+### Fixed
+
+- `JsonCodec<T>` and `SfCodec<T>` now reject messages larger than the declared
+  `MaxSize` even when the caller passes a larger destination span; previously
+  the bound was only enforced when the destination happened to be exactly
+  `MaxSize`.
+- `RingBufferHeader.Validate` now rejects slot sizes at or below the message
+  header (found by the new header fuzz oracle); such a header passed
+  validation and failed later during span construction.
+
 ## [1.0.0]
 
 ### Added

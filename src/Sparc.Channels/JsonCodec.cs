@@ -32,7 +32,7 @@ public sealed class JsonCodec<T> : ISparcCodec<T>
     public int Encode(T item, Span<byte> destination)
     {
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(item, _options);
-        if (bytes.Length > destination.Length)
+        if (bytes.Length > Math.Min(destination.Length, MaxSize))
         {
             throw new InvalidOperationException(
                 $"Encoded message of {bytes.Length} bytes exceeds the codec maximum of {MaxSize} bytes.");

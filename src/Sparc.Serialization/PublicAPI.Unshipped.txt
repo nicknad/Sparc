@@ -1,0 +1,8 @@
+#nullable enable
+Sparc.Serialization.SfCodec<T>
+Sparc.Serialization.SfCodec<T>.Decode(System.ReadOnlySpan<byte> source) -> T
+Sparc.Serialization.SfCodec<T>.Encode(T item, System.Span<byte> destination) -> int
+Sparc.Serialization.SfCodec<T>.MaxSize.get -> int
+Sparc.Serialization.SfCodec<T>.SfCodec(int maxSize, Sparc.Serialization.SfSerializer<T>! serialize, Sparc.Serialization.SfDeserializer<T>! deserialize) -> void
+Sparc.Serialization.SfDeserializer<T>
+Sparc.Serialization.SfSerializer<T>

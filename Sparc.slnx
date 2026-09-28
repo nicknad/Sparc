@@ -12,6 +12,7 @@
     <Project Path="src/Sparc.Client/Sparc.Client.csproj" />
     <Project Path="src/Sparc.Core/Sparc.Core.csproj" />
     <Project Path="src/Sparc.Hosting/Sparc.Hosting.csproj" />
+    <Project Path="src/Sparc.Serialization/Sparc.Serialization.csproj" />
     <Project Path="src/Sparc.Testing/Sparc.Testing.csproj" />
   </Folder>
   <Folder Name="/tools/">
