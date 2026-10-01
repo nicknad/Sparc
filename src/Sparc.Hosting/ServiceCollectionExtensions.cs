@@ -167,6 +167,13 @@ public static class SparcServiceCollectionExtensions
     private static IServiceCollection AddSparcChannelCore(IServiceCollection services, SparcChannelOptions options)
     {
         RequireIpc(services);
+        if (string.IsNullOrWhiteSpace(options.Name))
+        {
+            // An empty name previously failed Validate; generate a deployment-unique
+            // one instead so two apps never share a region by accident.
+            options.Name = RegionName.GenerateSecureName("sparc");
+        }
+
         options.Validate();
 
         services.TryAddSingleton(options);

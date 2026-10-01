@@ -113,7 +113,7 @@ internal static class Program
         });
 
         ConsumerRunResult result = session.Run(cancellation.Token);
-        PrintSummary(result, buffer);
+        PrintSummary(result, buffer, options);
 
         if (result.FailureMessage is not null)
         {
@@ -136,8 +136,17 @@ internal static class Program
         _ => RingBufferExitCodes.InternalError,
     };
 
-    private static void PrintSummary(ConsumerRunResult result, IConsumerEndpoint buffer)
+    private static void PrintSummary(ConsumerRunResult result, IConsumerEndpoint buffer, ConsumerOptions options)
     {
+        if (options.JsonFormat)
+        {
+            Console.WriteLine(SessionSummaries.ConsumerJson(
+                buffer.Name, buffer.Capacity, buffer.SlotSize, result,
+                TimeProvider.System.TimestampFrequency,
+                buffer.ProducerState.ToString(), buffer.ConsumerState.ToString()));
+            return;
+        }
+
         double seconds = result.Elapsed.TotalSeconds;
         double messagesPerSecond = seconds > 0 ? result.Received / seconds : 0;
         double megabytesPerSecond = seconds > 0 ? result.ReceivedBytes / seconds / (1024.0 * 1024.0) : 0;

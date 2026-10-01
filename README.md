@@ -775,8 +775,8 @@ microseconds:
   machine, not ring behavior. p99 ≈ 15.6 ms is the Windows timer tick that `SpinWait`
   falls back to when the consumer catches up and the buffer goes empty; `--spin-only` and
   `--notify` remove it.
-* Latencies come from a 16-sub-bucket log histogram, so percentiles are approximate by at
-  most 1/16 of the value.
+* Latencies come from a 16-sub-bucket log histogram reporting bucket midpoints
+  (clamped to min/max), so percentiles are approximate by at most 1/32 of the value.
 
 ### Producer vs consumer speed mismatch (64 B)
 

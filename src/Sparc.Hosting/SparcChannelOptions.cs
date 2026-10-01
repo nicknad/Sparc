@@ -46,6 +46,14 @@ public sealed class SparcChannelOptions
         RingBufferLayout.ValidateGeometry(Capacity, SlotSize);
     }
 
+    /// <summary>
+    /// Non-throwing geometry notes (cache-line alignment, region footprint vs CPU
+    /// caches). Empty when the geometry is unremarkable; see
+    /// <see cref="RingBufferAdvisor.GetWarnings"/> and
+    /// <c>docs/performance-invariants.md</c> (C5/C6).
+    /// </summary>
+    public IReadOnlyList<string> GetWarnings() => RingBufferAdvisor.GetWarnings(Capacity, SlotSize);
+
     internal SharedRingBufferOptions ToRingOptions(TimeProvider timeProvider) => new()
     {
         OpenTimeout = OpenTimeout,

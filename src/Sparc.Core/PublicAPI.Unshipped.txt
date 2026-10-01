@@ -1,5 +1,22 @@
 #nullable enable
+const Sparc.Core.RingBufferAdvisor.L2ResidentBytes = 1048576 -> long
+const Sparc.Core.RingBufferAdvisor.LlcResidentBytes = 4194304 -> long
+const Sparc.Core.RingBufferAdvisor.OversizeBytes = 16777216 -> long
 Sparc.Core.IProducerEndpoint.CommitWrite(int length) -> void
+Sparc.Core.RingBufferAdvice
+Sparc.Core.RingBufferAdvice.AlignmentWarning.get -> string?
+Sparc.Core.RingBufferAdvice.Capacity.get -> int
+Sparc.Core.RingBufferAdvice.MessagesPerSecondAtTarget.get -> double?
+Sparc.Core.RingBufferAdvice.PayloadSize.get -> int
+Sparc.Core.RingBufferAdvice.RegionBytes.get -> long
+Sparc.Core.RingBufferAdvice.RegionMiB.get -> double
+Sparc.Core.RingBufferAdvice.Residency.get -> string!
+Sparc.Core.RingBufferAdvice.RingBufferAdvice(int payloadSize, int capacity, int slotSize, long regionBytes, string! residency, string? alignmentWarning, double? messagesPerSecondAtTarget) -> void
+Sparc.Core.RingBufferAdvice.SlotSize.get -> int
+Sparc.Core.RingBufferAdvisor
+static Sparc.Core.RingBufferAdvisor.Advise(int payloadSize, int capacity = 1024, int slotSizeOverride = 0, double? targetGiBs = null) -> Sparc.Core.RingBufferAdvice!
+static Sparc.Core.RingBufferAdvisor.GetWarnings(int capacity, int slotSize) -> System.Collections.Generic.IReadOnlyList<string!>!
+static Sparc.Core.RingBufferAdvisor.SlotSizeFor(int payloadSize, int slotSizeOverride = 0) -> int
 Sparc.Core.IProducerEndpoint.TryReserveWrite(int type, out System.Span<byte> payload) -> bool
 Sparc.Core.SharedRingBufferOptions.Security.get -> Sparc.IpcMemoryRegionSecurity?
 Sparc.Core.SharedRingBufferOptions.Security.init -> void

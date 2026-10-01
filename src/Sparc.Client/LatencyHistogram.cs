@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Numerics;
 using System.Text;
 
@@ -9,8 +10,9 @@ namespace Sparc.Client.Diagnostics;
 /// </summary>
 /// <remarks>
 /// Each power-of-two range <c>[2^e, 2^(e+1))</c> is split into
-/// <see cref="SubBucketCount"/> equal sub-buckets, so percentiles are
-/// approximate by at most <c>1/16</c> of the value (about 6%) instead of the
+/// <see cref="SubBucketCount"/> equal sub-buckets, and percentiles report the
+/// midpoint of the bucket that holds the rank (clamped to the observed min/max),
+/// so the error is at most <c>1/32</c> of the value (about 3%) instead of the
 /// 2× error of pure log2 buckets — enough for p50/p90/p99/p99.9 tracking
 /// without storing every sample.
 /// </remarks>
@@ -78,11 +80,74 @@ public sealed class LatencyHistogram
             cumulative += _buckets[i];
             if (cumulative >= target)
             {
-                return LowerBoundTicks(i);
+                return MidpointTicks(i);
             }
         }
 
         return _max;
+    }
+
+    /// <summary>
+    /// Merges another histogram into this one, so per-run histograms can be pooled
+    /// into a single percentile calculation instead of taking the median of per-run
+    /// percentiles (which is not the same as the global percentile).
+    /// </summary>
+    public void Merge(LatencyHistogram other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        if (other._total == 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < _buckets.Length; i++)
+        {
+            _buckets[i] += other._buckets[i];
+        }
+
+        _total += other._total;
+        _sum += other._sum;
+        if (other._min < _min)
+        {
+            _min = other._min;
+        }
+
+        if (other._max > _max)
+        {
+            _max = other._max;
+        }
+    }
+
+    private double MidpointTicks(int index)
+    {
+        Debug.Assert(_total > 0, "PercentileTicks returns early on empty histograms.");
+        Debug.Assert(index >= 0 && index < _buckets.Length);
+
+        long lower = LowerBoundTicks(index);
+        long upper = index + 1 < _buckets.Length ? LowerBoundTicks(index + 1) : _max;
+        // Buckets past magnitude 62 are never filled (IndexFor caps there), so the
+        // next lower bound can wrap at or below this one; and the holding bucket
+        // always contains a sample, so _max >= lower here. One guard covers both.
+        if (upper <= lower)
+        {
+            upper = _max;
+        }
+
+        Debug.Assert(upper >= lower);
+        double midpoint = (lower + (double)upper) / 2.0;
+        // Clamp so single-value histograms report exactly and no percentile can
+        // escape the observed [min, max] range.
+        if (midpoint < _min)
+        {
+            return _min;
+        }
+
+        if (midpoint > _max)
+        {
+            return _max;
+        }
+
+        return midpoint;
     }
 
     /// <summary>Formats a one-line report, converting ticks to microseconds.</summary>

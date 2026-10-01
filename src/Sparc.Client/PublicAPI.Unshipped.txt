@@ -1,1 +1,46 @@
 #nullable enable
+Sparc.Client.ConsumerSummary
+Sparc.Client.ConsumerSummary.Capacity.get -> int
+Sparc.Client.ConsumerSummary.ConsumerState.get -> string!
+Sparc.Client.ConsumerSummary.ConsumerSummary(string! name, int capacity, int slotSize, long received, long receivedBytes, double elapsedS, double wallElapsedS, double throughputMsgS, double dataThroughputMiBS, string! producerState, string! consumerState, Sparc.Client.LatencySummary! latency) -> void
+Sparc.Client.ConsumerSummary.DataThroughputMiBS.get -> double
+Sparc.Client.ConsumerSummary.ElapsedS.get -> double
+Sparc.Client.ConsumerSummary.Latency.get -> Sparc.Client.LatencySummary!
+Sparc.Client.ConsumerSummary.Name.get -> string!
+Sparc.Client.ConsumerSummary.ProducerState.get -> string!
+Sparc.Client.ConsumerSummary.Received.get -> long
+Sparc.Client.ConsumerSummary.ReceivedBytes.get -> long
+Sparc.Client.ConsumerSummary.SlotSize.get -> int
+Sparc.Client.ConsumerSummary.ThroughputMsgS.get -> double
+Sparc.Client.ConsumerSummary.WallElapsedS.get -> double
+Sparc.Client.Diagnostics.LatencyHistogram.Merge(Sparc.Client.Diagnostics.LatencyHistogram! other) -> void
+Sparc.Client.LatencySummary
+Sparc.Client.LatencySummary.LatencySummary(double minUs, double meanUs, double p50Us, double p90Us, double p95Us, double p99Us, double p999Us, double maxUs, long n) -> void
+Sparc.Client.LatencySummary.MaxUs.get -> double
+Sparc.Client.LatencySummary.MeanUs.get -> double
+Sparc.Client.LatencySummary.MinUs.get -> double
+Sparc.Client.LatencySummary.N.get -> long
+Sparc.Client.LatencySummary.P50Us.get -> double
+Sparc.Client.LatencySummary.P90Us.get -> double
+Sparc.Client.LatencySummary.P95Us.get -> double
+Sparc.Client.LatencySummary.P999Us.get -> double
+Sparc.Client.LatencySummary.P99Us.get -> double
+Sparc.Client.ProducerSummary
+Sparc.Client.ProducerSummary.ActiveElapsedS.get -> double
+Sparc.Client.ProducerSummary.Capacity.get -> int
+Sparc.Client.ProducerSummary.DataThroughputMiBS.get -> double
+Sparc.Client.ProducerSummary.ElapsedS.get -> double
+Sparc.Client.ProducerSummary.MaxPayload.get -> int
+Sparc.Client.ProducerSummary.Name.get -> string!
+Sparc.Client.ProducerSummary.PayloadSize.get -> int
+Sparc.Client.ProducerSummary.Produced.get -> long
+Sparc.Client.ProducerSummary.ProducerSummary(string! name, int capacity, int slotSize, int maxPayload, long produced, int payloadSize, double elapsedS, double activeElapsedS, double throughputMsgS, double dataThroughputMiBS, Sparc.Client.SessionStopReason reason) -> void
+Sparc.Client.ProducerSummary.Reason.get -> Sparc.Client.SessionStopReason
+Sparc.Client.ProducerSummary.SlotSize.get -> int
+Sparc.Client.ProducerSummary.ThroughputMsgS.get -> double
+Sparc.Client.SessionSummaries
+static Sparc.Client.SessionSummaries.AdviceJson(Sparc.Core.RingBufferAdvice! advice) -> string!
+static Sparc.Client.SessionSummaries.ConsumerJson(string! name, int capacity, int slotSize, Sparc.Client.ConsumerRunResult result, double timestampFrequency, string! producerState, string! consumerState) -> string!
+static Sparc.Client.SessionSummaries.ProducerJson(string! name, int capacity, int slotSize, int maxPayload, Sparc.Client.ProducerRunResult result) -> string!
+static Sparc.Client.SessionSummaries.TryParseConsumer(string! text, out Sparc.Client.ConsumerSummary? summary) -> bool
+static Sparc.Client.SessionSummaries.TryParseProducer(string! text, out Sparc.Client.ProducerSummary? summary) -> bool

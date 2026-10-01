@@ -27,6 +27,9 @@ internal sealed class ConsumerOptions
     public bool VerifyPayload { get; private set; } = true;
     public bool Quiet { get; private set; }
     public bool ShowHelp { get; private set; }
+    public string Format { get; private set; } = "text";
+
+    public bool JsonFormat => OutputFormat.IsJson(Format);
 
     public const string Usage = """
         Sparc.Consumer — reads fixed-size messages from a cross-process SPSC ring buffer.
@@ -61,6 +64,8 @@ internal sealed class ConsumerOptions
           --no-verify              Do not validate sequence numbers and type.
           --no-verify-payload      Keep sequence/type checks, skip the payload fill scan.
           --quiet                  Suppress progress output.
+          --format <text|json>     Output format (default: text). json prints one machine-readable
+                                   object for the harness instead of the human summary.
           -h, --help               Show this help.
 
         Exit codes:
@@ -134,6 +139,9 @@ internal sealed class ConsumerOptions
                     break;
                 case "--quiet":
                     options.Quiet = true;
+                    break;
+                case "--format":
+                    options.Format = OutputFormat.Parse(reader.RequiredValue(arg, value), arg);
                     break;
                 default:
                     throw new UsageException($"Unknown argument '{arg}'.");

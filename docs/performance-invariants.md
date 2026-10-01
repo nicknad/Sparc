@@ -409,9 +409,11 @@ not attribute host stalls to the algorithm.
 
 ### G5. Percentiles are approximate by design
 
-The histogram splits each power-of-two range into 16 sub-buckets, so a reported
-percentile is within 1/16 of the true value. It trades exactness for
-allocation-free recording.
+The histogram splits each power-of-two range into 16 sub-buckets and reports the
+midpoint of the bucket holding the rank (clamped to min/max), so a reported
+percentile is within 1/32 of the true value. It trades exactness for
+allocation-free recording. `Merge` pools per-run histograms so repeats can be
+combined into one global percentile instead of a median of percentiles.
 
 ### G6. Shared-host swings are real
 

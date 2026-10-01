@@ -223,8 +223,9 @@ with structured outcomes.
   publish to end) and `RunElapsed` (wall clock) exist because the total elapsed
   window and the stream window measure different things.
 * **Latency histogram.** 16 sub-buckets per power-of-two magnitude, preallocated
-  `long[]`, allocation-free `Record`. Percentiles are approximate by at most
-  1/16 of the value.
+  `long[]`, allocation-free `Record`. Percentiles report the bucket midpoint
+  (clamped to min/max): approximate by at most 1/32 of the value. `Merge`
+  pools per-run histograms into one global percentile.
 
 ### Wait modes
 

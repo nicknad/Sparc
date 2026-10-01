@@ -1,3 +1,4 @@
 #nullable enable
+Sparc.Hosting.SparcChannelOptions.GetWarnings() -> System.Collections.Generic.IReadOnlyList<string!>!
 Sparc.Hosting.SparcChannelOptions.Security.get -> Sparc.IpcMemoryRegionSecurity?
 Sparc.Hosting.SparcChannelOptions.Security.set -> void

@@ -208,8 +208,10 @@ runtime change, and treat failures on another host as directional.
    send rates.
 5. **Consumer stream window vs wall clock.** `elapsed` is first-to-last
    message; `wallElapsed` includes idle time.
-6. **Percentiles are approximate.** The histogram's sub-buckets bound the error
-   at 1/16 of the value.
+6. **Percentiles are approximate.** The histogram reports the midpoint of the
+   sub-bucket holding the rank (clamped to min/max), bounding the error at
+   1/32 of the value. Use `Merge` to pool per-run histograms instead of taking
+   the median of per-run percentiles.
 7. **Allocations are measured after warm-up.** The concurrency test warms up
    100k iterations before the < 4 KiB assertion; BDN attributes allocations
    per operation, not per process.

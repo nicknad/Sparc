@@ -31,6 +31,12 @@ internal static class Program
             return RingBufferExitCodes.Success;
         }
 
+        if (options.Advise)
+        {
+            PrintAdvice(options);
+            return RingBufferExitCodes.Success;
+        }
+
         try
         {
             return Run(options);
@@ -111,7 +117,7 @@ internal static class Program
         });
 
         ProducerRunResult result = session.Run(cancellation.Token);
-        PrintSummary(result);
+        PrintSummary(result, buffer, options);
 
         if (result.FailureMessage is not null)
         {
@@ -119,6 +125,42 @@ internal static class Program
         }
 
         return MapReason(result.Reason);
+    }
+
+    private static void PrintAdvice(ProducerOptions options)
+    {
+        RingBufferAdvice advice = RingBufferAdvisor.Advise(
+            options.Size, options.Capacity, options.SlotSize, options.TargetGiB);
+
+        if (options.JsonFormat)
+        {
+            Console.WriteLine(SessionSummaries.AdviceJson(advice));
+            return;
+        }
+
+        Console.WriteLine(
+            $"advise: payload={advice.PayloadSize} capacity={advice.Capacity} slotSize={advice.SlotSize} " +
+            $"region={advice.RegionBytes} bytes ({advice.RegionMiB:F1} MiB)");
+        Console.WriteLine($"advise: {advice.Residency}");
+        if (advice.AlignmentWarning is not null)
+        {
+            Console.WriteLine($"advise: warning: {advice.AlignmentWarning}");
+        }
+
+        foreach (string warning in RingBufferAdvisor.GetWarnings(advice.Capacity, advice.SlotSize))
+        {
+            if (!string.Equals(warning, advice.AlignmentWarning, StringComparison.Ordinal))
+            {
+                Console.WriteLine($"advise: warning: {warning}");
+            }
+        }
+
+        if (advice.MessagesPerSecondAtTarget.HasValue)
+        {
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                $"advise: {options.TargetGiB:F1} GiB/s needs {advice.MessagesPerSecondAtTarget:F0} msg/s " +
+                $"at {advice.PayloadSize} bytes/message"));
+        }
     }
 
     private static SessionNotification CreateNotification(string regionName) =>
@@ -133,8 +175,15 @@ internal static class Program
         _ => RingBufferExitCodes.InternalError,
     };
 
-    private static void PrintSummary(ProducerRunResult result)
+    private static void PrintSummary(ProducerRunResult result, IProducerEndpoint buffer, ProducerOptions options)
     {
+        if (options.JsonFormat)
+        {
+            Console.WriteLine(SessionSummaries.ProducerJson(
+                buffer.Name, buffer.Capacity, buffer.SlotSize, buffer.MaxPayloadSize, result));
+            return;
+        }
+
         // The send rate uses the active window (first publish to end); the total
         // elapsed time also contains waiting for the consumer to attach.
         TimeSpan active = result.ActiveElapsed > TimeSpan.Zero ? result.ActiveElapsed : result.Elapsed;

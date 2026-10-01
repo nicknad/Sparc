@@ -185,6 +185,28 @@ public class HostingTests
     }
 
     [Fact]
+    public void AddSparcChannelDefaultsToUniqueSecureNames()
+    {
+        static string RegisterDefault()
+        {
+            ServiceCollection services = new();
+            services.AddSingleton<IIpcMemoryRegionFactory>(new InMemoryMemoryRegionFactory());
+            services.AddSparcIpc();
+            services.AddSparcChannel();
+
+            using ServiceProvider provider = services.BuildServiceProvider();
+            return provider.GetRequiredService<SparcChannelOptions>().Name;
+        }
+
+        string first = RegisterDefault();
+        string second = RegisterDefault();
+
+        Assert.NotEqual(first, second, StringComparer.Ordinal);
+        Assert.Equal(first, RegionName.Validate(first));
+        Assert.Equal(second, RegionName.Validate(second));
+    }
+
+    [Fact]
     public void AddSparcChannelBindsFromConfiguration()
     {
         IConfigurationRoot configuration = new ConfigurationBuilder()

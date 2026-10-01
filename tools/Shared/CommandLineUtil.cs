@@ -68,6 +68,32 @@ internal ref struct ArgumentReader(string[] args)
     }
 }
 
+/// <summary>Parses the shared <c>--format</c> switch of the sample CLIs.</summary>
+internal static class OutputFormat
+{
+    public const string Text = "text";
+
+    public const string Json = "json";
+
+    public static string Parse(string value, string name)
+    {
+        if (string.Equals(value, Json, StringComparison.OrdinalIgnoreCase))
+        {
+            return Json;
+        }
+
+        if (string.Equals(value, Text, StringComparison.OrdinalIgnoreCase))
+        {
+            return Text;
+        }
+
+        throw new UsageException($"Argument '{name}' must be 'text' or 'json'.");
+    }
+
+    public static bool IsJson(string format) =>
+        string.Equals(format, Json, StringComparison.OrdinalIgnoreCase);
+}
+
 /// <summary>Parses the shared <c>--security</c> switch of the sample CLIs.</summary>
 internal static class SecurityFlag
 {

@@ -26,6 +26,11 @@ internal sealed class ProducerOptions
     public string? SectionHandle { get; private set; }
     public bool Quiet { get; private set; }
     public bool ShowHelp { get; private set; }
+    public bool Advise { get; private set; }
+    public double? TargetGiB { get; private set; }
+    public string Format { get; private set; } = "text";
+
+    public bool JsonFormat => OutputFormat.IsJson(Format);
 
     public int EffectiveSlotSize => SlotSize > 0
         ? SlotSize
@@ -66,6 +71,12 @@ internal sealed class ProducerOptions
           --recreate-stale         Delete and recreate an incompatible/stale region (destructive).
           --require-existing       Never create the region; fail if it does not exist.
           --quiet                  Suppress progress output.
+          --advise                 Print sizing guidance for --size/--capacity/--slot-size and exit
+                                   (no --name needed). Add --target-gib <n> for the message rate
+                                   needed to hit that data rate.
+          --target-gib <n>         Target data rate in GiB/s; only meaningful with --advise.
+          --format <text|json>     Output format (default: text). json prints one machine-readable
+                                   object for the harness instead of the human summary.
           -h, --help               Show this help.
 
         Exit codes:
@@ -137,9 +148,36 @@ internal sealed class ProducerOptions
                 case "--quiet":
                     options.Quiet = true;
                     break;
+                case "--advise":
+                    options.Advise = true;
+                    break;
+                case "--target-gib":
+                    options.TargetGiB = ParsePositiveDouble(reader.RequiredValue(arg, value), arg);
+                    break;
+                case "--format":
+                    options.Format = OutputFormat.Parse(reader.RequiredValue(arg, value), arg);
+                    break;
                 default:
                     throw new UsageException($"Unknown argument '{arg}'.");
             }
+        }
+
+        if (options.TargetGiB.HasValue && !options.Advise)
+        {
+            throw new UsageException("--target-gib is only meaningful with --advise.");
+        }
+
+        if (options.Advise)
+        {
+            RingBufferLayout.ValidateGeometry(options.Capacity, options.EffectiveSlotSize);
+            if (options.EffectiveSlotSize - RingBufferLayout.MessageHeaderSize < options.Size)
+            {
+                throw new UsageException(
+                    $"Slot size {options.EffectiveSlotSize} cannot hold a {options.Size}-byte payload " +
+                    $"(maximum is {options.EffectiveSlotSize - RingBufferLayout.MessageHeaderSize}).");
+            }
+
+            return options;
         }
 
         if (options.Name.Length == 0 && options.SectionHandle is null)
@@ -168,5 +206,19 @@ internal sealed class ProducerOptions
         }
 
         return options;
+    }
+
+    private static double ParsePositiveDouble(string text, string name)
+    {
+        if (!double.TryParse(
+                text,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out double result) || result <= 0)
+        {
+            throw new UsageException($"Argument '{name}' has invalid value '{text}'.");
+        }
+
+        return result;
     }
 }

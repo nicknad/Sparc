@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Sparc.Benchmarks.Pumps;
+using Sparc.Client;
 using Sparc.Core;
 
 namespace Sparc.Benchmarks;
@@ -289,6 +290,7 @@ internal static class LatencyRunner
             "--size", size.ToString(CultureInfo.InvariantCulture),
             "--capacity", capacity.ToString(CultureInfo.InvariantCulture),
             "--delay-us", producerDelayUs.ToString(CultureInfo.InvariantCulture),
+            "--format", "json",
         ];
         if (slotSize > 0)
         {
@@ -301,6 +303,7 @@ internal static class LatencyRunner
             "--name", name,
             "--count", count.ToString(CultureInfo.InvariantCulture),
             "--delay-us", consumerDelayUs.ToString(CultureInfo.InvariantCulture),
+            "--format", "json",
         ];
         if (!verify)
         {
@@ -383,6 +386,18 @@ internal static class LatencyRunner
 
     private static ProducerSample ParseProducerOutput(string output, int capacity, int slotSize, int payloadSize)
     {
+        // Machine-readable output first; the human summary stays as fallback for
+        // older builds or --format text runs.
+        if (SessionSummaries.TryParseProducer(output, out ProducerSummary? summary) && summary is not null)
+        {
+            return new ProducerSample(
+                summary.Produced,
+                summary.ThroughputMsgS,
+                summary.DataThroughputMiBS,
+                summary.Capacity,
+                summary.SlotSize);
+        }
+
         Match match = ProducerPattern.Match(output);
         if (!match.Success)
         {
@@ -411,6 +426,26 @@ internal static class LatencyRunner
 
     private static ConsumerSample ParseConsumerOutput(string output)
     {
+        // Machine-readable output first; the human summary stays as fallback for
+        // older builds or --format text runs.
+        if (SessionSummaries.TryParseConsumer(output, out ConsumerSummary? summary) && summary is not null)
+        {
+            return new ConsumerSample(
+                summary.Received,
+                summary.ThroughputMsgS,
+                summary.DataThroughputMiBS,
+                new LatencyStats(
+                    summary.Latency.N,
+                    summary.Latency.MinUs,
+                    summary.Latency.MeanUs,
+                    summary.Latency.P50Us,
+                    summary.Latency.P90Us,
+                    summary.Latency.P95Us,
+                    summary.Latency.P99Us,
+                    summary.Latency.P999Us,
+                    summary.Latency.MaxUs));
+        }
+
         Match match = ConsumerPattern.Match(output);
         Match latency = LatencyPattern.Match(output);
         if (!match.Success || !latency.Success)
