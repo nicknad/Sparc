@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Security.AccessControl;
 using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 using Sparc.Core;
@@ -24,6 +25,27 @@ public class WindowsSectionSecurityTests
 #pragma warning restore CA1416
     }
 
+    // Reads back the DACL as identities. Asserting on the parsed access
+    // control entries rather than raw SDDL text keeps the tests correct when
+    // the SDDL canonicalizer replaces a SID with its alias (the built-in
+    // Administrator becomes LA, SYSTEM becomes SY, and so on).
+    private static (bool IsProtected, IReadOnlyList<(AceType Type, string Sid, int Mask)> Aces) ParseDacl(string sddl)
+    {
+#pragma warning disable CA1416 // Windows-only API; the test is guarded by Supported.
+        RawSecurityDescriptor descriptor = new(sddl);
+        RawAcl dacl = descriptor.DiscretionaryAcl!;
+        List<(AceType Type, string Sid, int Mask)> aces = new(dacl.Count);
+        foreach (GenericAce entry in dacl)
+        {
+            KnownAce ace = Assert.IsAssignableFrom<KnownAce>(entry);
+            aces.Add((ace.AceType, ace.SecurityIdentifier.Value, ace.AccessMask));
+        }
+
+        bool isProtected = (descriptor.ControlFlags & ControlFlags.DiscretionaryAclProtected) != ControlFlags.None;
+#pragma warning restore CA1416
+        return (isProtected, aces);
+    }
+
     [Fact]
     public void CurrentUserOnlyBuildsAProtectedDaclForTheCurrentUser()
     {
@@ -32,14 +54,22 @@ public class WindowsSectionSecurityTests
             return;
         }
 
+#pragma warning disable CA1416 // Windows-only API; the test is guarded by Supported.
         string sddl = WindowsSectionSecurity.CurrentUserOnly.Sddl;
 
         Assert.StartsWith("D:P", sddl, StringComparison.Ordinal);
-        Assert.Contains(CurrentUserSid(), sddl, StringComparison.Ordinal);
-        Assert.DoesNotContain(";;;WD", sddl, StringComparison.Ordinal); // Everyone
-        Assert.DoesNotContain(";;;BU", sddl, StringComparison.Ordinal); // BUILTIN\Users
-        Assert.DoesNotContain(";;;AU", sddl, StringComparison.Ordinal); // Authenticated Users
-        Assert.DoesNotContain(";;;AN", sddl, StringComparison.Ordinal); // Anonymous
+
+        (bool isProtected, IReadOnlyList<(AceType Type, string Sid, int Mask)> aces) = ParseDacl(sddl);
+        Assert.True(isProtected);
+
+        // A single allow entry for exactly the current user, with only the
+        // section rights needed to map the region: no Everyone, Users,
+        // Authenticated Users, or other group access.
+        (AceType type, string sid, int mask) = Assert.Single(aces);
+        Assert.Equal(AceType.AccessAllowed, type);
+        Assert.Equal(CurrentUserSid(), sid);
+        Assert.Equal(0x7, mask);
+#pragma warning restore CA1416
     }
 
     [Fact]
@@ -66,7 +96,11 @@ public class WindowsSectionSecurityTests
 #pragma warning restore CA1416
         string sddl = WindowsSectionSecurity.ForAccountNames(accountName).Sddl;
 
-        Assert.Contains(CurrentUserSid(), sddl, StringComparison.Ordinal);
+#pragma warning disable CA1416 // Windows-only API; the test is guarded by Supported.
+        (_, IReadOnlyList<(AceType Type, string Sid, int Mask)> aces) = ParseDacl(sddl);
+        (_, string sid, _) = Assert.Single(aces);
+        Assert.Equal(CurrentUserSid(), sid);
+#pragma warning restore CA1416
     }
 
     [Fact]
