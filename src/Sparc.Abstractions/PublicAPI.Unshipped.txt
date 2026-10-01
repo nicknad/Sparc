@@ -3,3 +3,5 @@ Sparc.IpcMemoryRegionSecurity
 Sparc.IpcMemoryRegionSecurity.IpcMemoryRegionSecurity() -> void
 Sparc.IpcRegionOptions.Security.get -> Sparc.IpcMemoryRegionSecurity?
 Sparc.IpcRegionOptions.Security.init -> void
+const Sparc.RegionName.MaxLength = 128 -> int
+static Sparc.RegionName.GenerateSecureName(string! prefix = "sparc") -> string!

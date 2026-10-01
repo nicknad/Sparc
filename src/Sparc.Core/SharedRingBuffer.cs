@@ -47,6 +47,14 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
     private long _cachedHead; // producer-private
     private long _cachedTail; // consumer-private
 
+    // Private copies of the *own* cursor. The owner is the only writer, so a
+    // plain field read is sufficient; this avoids a Volatile.Read (acquire
+    // fence / ldar on ARM64) on the shared line for every message. The shared
+    // value is updated with Volatile.Write on publish, and the local copy is
+    // advanced in the same method. Re-synced from the region on Connect.
+    private long _localTail; // producer-private: next write sequence
+    private long _localHead; // consumer-private: next read sequence
+
     // State for the zero-copy lease API. The producer and consumer contracts are
     // single-threaded, so per-instance pending state is safe.
     private long _pendingTail;
@@ -79,6 +87,8 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
         // invariant cachedHead <= head both hold.
         _cachedHead = Volatile.Read(ref region.HeadRef);
         _cachedTail = Volatile.Read(ref region.TailRef);
+        _localHead = _cachedHead;
+        _localTail = _cachedTail;
         Debug.Assert(_cachedTail >= _cachedHead);
     }
 
@@ -205,6 +215,14 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
             {
                 _region.WriteEndpointState(role, RingBufferEndpointState.Running);
                 _role = role;
+                // Another instance may have advanced the cursors while this role
+                // was unclaimed (e.g. takeover after a crash). Re-sync both the
+                // peer caches and the owned-cursor copies so the hot path starts
+                // from the live values.
+                _cachedHead = Volatile.Read(ref _region.HeadRef);
+                _cachedTail = Volatile.Read(ref _region.TailRef);
+                _localHead = _cachedHead;
+                _localTail = _cachedTail;
                 return;
             }
         }
@@ -255,6 +273,7 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
         // Release: slot bytes must be globally visible before the consumer can
         // observe the advanced tail.
         Volatile.Write(ref _region.TailRef, tail + 1);
+        _localTail = tail + 1;
         return true;
     }
 
@@ -284,6 +303,7 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
         // Release: publishes "slot consumed" to the producer. If this process
         // dies before the store, the message is redelivered after a restart.
         Volatile.Write(ref _region.HeadRef, head + 1);
+        _localHead = head + 1;
         return true;
     }
 
@@ -387,6 +407,7 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
         // Release: the caller's payload writes and the framing above must be
         // visible before the consumer can observe the advanced tail.
         Volatile.Write(ref _region.TailRef, _pendingTail + 1);
+        _localTail = _pendingTail + 1;
     }
 
     /// <inheritdoc />
@@ -452,13 +473,15 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
         // Release: publishes "slot consumed" to the producer once the caller is
         // done with the view. A crash before this store redelivers the message.
         Volatile.Write(ref _region.HeadRef, _peekedHead + 1);
+        _localHead = _peekedHead + 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TryAcquireWriteSlot(out long tail, out int offset)
     {
-        // Producer-owned cursor: this process is the only writer.
-        tail = Volatile.Read(ref _region.TailRef);
+        // Producer-owned cursor: this instance is the only writer, so a plain
+        // field read suffices (mirrors SpscRingBuffer._tail.Value).
+        tail = _localTail;
 
         // Acquire (only when the cached peer cursor claims the buffer is full):
         // observes the consumer's release of head, so the slot we are about to
@@ -488,8 +511,8 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TryAcquireReadSlot(out long head, out int offset)
     {
-        // Consumer-owned cursor.
-        head = Volatile.Read(ref _region.HeadRef);
+        // Consumer-owned cursor: plain field read suffices.
+        head = _localHead;
 
         // Acquire (only when the cached peer cursor claims the buffer is empty):
         // observes the producer's release of the slot contents.

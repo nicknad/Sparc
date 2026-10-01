@@ -215,5 +215,22 @@ public class EndpointApiTests
         Assert.Throws<ArgumentException>(() => RegionName.Validate("a/b"));
         Assert.Throws<ArgumentException>(() => RegionName.Validate("a\\b"));
         Assert.Throws<ArgumentException>(() => RegionName.Validate(".."));
+        Assert.Throws<ArgumentException>(() => RegionName.Validate("bad\nname"));
+        Assert.Throws<ArgumentException>(() => RegionName.Validate(new string('x', RegionName.MaxLength + 1)));
+    }
+
+    [Fact]
+    public void GenerateSecureNameIsUniqueAndValid()
+    {
+        string a = RegionName.GenerateSecureName("orders");
+        string b = RegionName.GenerateSecureName("orders");
+        Assert.NotEqual(a, b, StringComparer.Ordinal);
+        Assert.StartsWith("orders-", a, StringComparison.Ordinal);
+        Assert.Equal(a, RegionName.Validate(a));
+        Assert.True(a.Length <= RegionName.MaxLength);
+
+        // Long prefixes are truncated to fit, never rejected.
+        string longName = RegionName.GenerateSecureName(new string('y', 200));
+        Assert.Equal(longName, RegionName.Validate(longName));
     }
 }
