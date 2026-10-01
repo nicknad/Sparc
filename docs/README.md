@@ -11,6 +11,7 @@ This folder goes deeper than the top-level `README.md`:
 
 | Document | What it covers |
 |---|---|
+| [learning-path.md](learning-path.md) | A guided route through these docs and the code: the mental model, nine sessions, hands-on experiments and checkpoints. |
 | [concept.md](concept.md) | The problem, the core idea, what the transport guarantees and what it does not, and how it compares to pipes/sockets/queues. |
 | [use-cases.md](use-cases.md) | Where an SPSC shared-memory ring is the right tool, where it is not, and sizing guidance. |
 | [hosting.md](hosting.md) | `Sparc.Hosting`: DI registration, hosted session/worker services, health checks, metrics, configuration, testing. |
@@ -21,10 +22,15 @@ This folder goes deeper than the top-level `README.md`:
 | [performance-invariants.md](performance-invariants.md) | Every invariant that makes the measured performance possible, grouped by kind, each with its mechanism, where it lives in code, what it buys, and what breaks if violated. |
 | [benchmarking.md](benchmarking.md) | The benchmark harnesses, how to run them, measurement traps, current numbers, and the regression check. |
 
-Reading order for the mechanics: `concept.md` -> `use-cases.md` ->
-`how-it-works.md` -> `performance-invariants.md` -> `benchmarking.md`. If you
-are wiring a host, start with `hosting.md`; for message typing, `channels.md`;
-for large values, `streaming.md`; for writing tests, `testing.md`.
+Transport security and the threat model live in the top-level
+[README.md §7](../README.md#7-transport-security-and-isolation) and
+[SECURITY.md](../SECURITY.md); the ring protocol never inspects them.
+
+New here? Start with `learning-path.md`. Reading order for the mechanics:
+`concept.md` -> `use-cases.md` -> `how-it-works.md` ->
+`performance-invariants.md` -> `benchmarking.md`. If you are wiring a host,
+start with `hosting.md`; for message typing, `channels.md`; for large values,
+`streaming.md`; for writing tests, `testing.md`.
 
 ## Source map
 

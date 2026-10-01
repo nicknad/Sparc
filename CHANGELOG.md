@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Transport-level security for Windows sections.** `IpcMemoryRegionSecurity`
+  (plus `IpcRegionOptions.Security` / `SharedRingBufferOptions.Security`) lets a
+  transport apply OS access control when a region is created.
+  `WindowsSectionSecurity` builds restrictive section DACLs (current user,
+  explicit SIDs/accounts, or SDDL) applied through `CreateFileMapping`; opening
+  an existing region is access-checked by the OS. Security is enforced during
+  region establishment only — the message path is unchanged.
+- **Capability-style unnamed sections.** `WindowsUnnamedSection.Create` creates
+  an unnamed section and returns a `WindowsSectionCapability` exposing the
+  section HANDLE for inheritance/`DuplicateHandle`; `MapHandle` maps a
+  transferred handle. `SparcRing.OpenProducer`/`OpenConsumer` gained
+  `IIpcMemoryRegion` overloads so an endpoint can adopt such a mapping. A
+  channel identifier alone grants nothing: the section has no name.
+- **CLI security flags.** `--security current-user` creates named regions with a
+  current-user-only DACL; `--section-handle <h>|-` joins an unnamed section by a
+  transferred HANDLE (`-` reads the value from stdin).
+- **Security tests and benchmarks.** Windows unit tests (allowed/denied access,
+  SDDL validation, unnamed-handle mappings), a secured shared-memory concurrency
+  run, process tests for secure named regions and cross-process `DuplicateHandle`
+  transfer, plus `shared-secured-copy/lease` regression scenarios and BDN
+  benchmarks.
+- **Threat model documentation.** README/`SECURITY.md`/`docs/concept.md` now
+  distinguish transport access control from message authentication and
+  confidentiality, and document how an optional authenticated/encrypted payload
+  layer fits above SPARC.
 - **Chunked message streaming.** `SparcStreamWriter`/`SparcStreamReader` and
   `SparcStreamWriteBuffer` (`IWriteBuffer`) publish and reassemble messages
   larger than one slot — larger than the ring, even — as `First`/`Last` chunk

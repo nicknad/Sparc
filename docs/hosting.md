@@ -46,13 +46,19 @@ builder.Services.AddSparcConsumerSession(options =>
 files). An existing `IIpcMemoryRegionFactory` registration wins, so tests and
 custom transports can register their own before calling `AddSparcIpc()`.
 
+`AddSparcChannel(options => options.Security = WindowsSectionSecurity.CurrentUserOnly)`
+applies transport access control when this process creates the region (Windows
+section DACLs; see the README security section). It is ignored on a join and by
+transports that do not implement it (the Unix factory rejects it rather than
+dropping it silently).
+
 ## Registrations
 
 | API | Effect |
 |---|---|
 | `AddSparcIpc()` | `IIpcMemoryRegionFactory` singleton for the current OS + `TimeProvider` |
 | `AddSparcIpc(Func<IServiceProvider, IIpcMemoryRegionFactory>)` | Custom factory (tests, custom transport) |
-| `AddSparcChannel(Action<SparcChannelOptions>)` | Default channel: name, geometry, open policy, takeover |
+| `AddSparcChannel(Action<SparcChannelOptions>)` | Default channel: name, geometry, open policy, takeover, transport security |
 | `AddSparcChannel(IConfigurationSection)` | Binds the same options from configuration |
 | `AddSparcProducerSession(ProducerSessionOptions?)` / `AddSparcConsumerSession(ConsumerSessionOptions?)` | Hosted `ProducerSession`/`ConsumerSession` |
 | `AddSparcProducerWorker<TWorker>()` / `AddSparcConsumerWorker<TWorker>()` | Hosted custom `ISparcProducerWorker`/`ISparcConsumerWorker` |

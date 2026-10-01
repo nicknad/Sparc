@@ -1,1 +1,15 @@
 #nullable enable
+Sparc.WindowsMemoryMapped.WindowsSectionCapability
+Sparc.WindowsMemoryMapped.WindowsSectionCapability.Dispose() -> void
+Sparc.WindowsMemoryMapped.WindowsSectionCapability.Handle.get -> Microsoft.Win32.SafeHandles.SafeFileHandle!
+Sparc.WindowsMemoryMapped.WindowsSectionCapability.Region.get -> Sparc.IIpcMemoryRegion!
+Sparc.WindowsMemoryMapped.WindowsSectionSecurity
+Sparc.WindowsMemoryMapped.WindowsSectionSecurity.Sddl.get -> string!
+Sparc.WindowsMemoryMapped.WindowsUnnamedSection
+const Sparc.WindowsMemoryMapped.WindowsUnnamedSection.UnnamedRegionName = "(unnamed section)" -> string!
+static Sparc.WindowsMemoryMapped.WindowsSectionSecurity.CurrentUserOnly.get -> Sparc.WindowsMemoryMapped.WindowsSectionSecurity!
+static Sparc.WindowsMemoryMapped.WindowsSectionSecurity.ForAccountNames(params string![]! accountNames) -> Sparc.WindowsMemoryMapped.WindowsSectionSecurity!
+static Sparc.WindowsMemoryMapped.WindowsSectionSecurity.ForSids(params System.Security.Principal.SecurityIdentifier![]! securityIdentifiers) -> Sparc.WindowsMemoryMapped.WindowsSectionSecurity!
+static Sparc.WindowsMemoryMapped.WindowsSectionSecurity.FromSddl(string! sddl) -> Sparc.WindowsMemoryMapped.WindowsSectionSecurity!
+static Sparc.WindowsMemoryMapped.WindowsUnnamedSection.Create(long size, Sparc.WindowsMemoryMapped.WindowsSectionSecurity? security = null, bool inheritHandle = false) -> Sparc.WindowsMemoryMapped.WindowsSectionCapability!
+static Sparc.WindowsMemoryMapped.WindowsUnnamedSection.MapHandle(Microsoft.Win32.SafeHandles.SafeFileHandle! sectionHandle) -> Sparc.IIpcMemoryRegion!

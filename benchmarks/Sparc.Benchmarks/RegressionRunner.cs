@@ -64,6 +64,8 @@ internal static class RegressionRunner
             ("channel-8", 8, 2_000_000, () => new SpscChannelPump(8)),
             ("shared-copy-64", 64, 2_000_000, () => new SpscSharedMemoryPump(64)),
             ("shared-lease-64", 64, 2_000_000, () => SpscSharedMemoryPump.CreateLease(64)),
+            ("shared-secured-copy-64", 64, 2_000_000, () => SpscSharedMemoryPump.CreateSecured(64)),
+            ("shared-secured-lease-64", 64, 2_000_000, () => SpscSharedMemoryPump.CreateSecuredLease(64)),
             ("shared-copy-4k", 4096, 500_000, () => new SpscSharedMemoryPump(4096)),
             ("shared-lease-4k", 4096, 500_000, () => SpscSharedMemoryPump.CreateLease(4096)),
             ("shared-copy-16k", 16384, 150_000, () => new SpscSharedMemoryPump(16384)),

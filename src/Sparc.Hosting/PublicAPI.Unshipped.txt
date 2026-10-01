@@ -1,1 +1,3 @@
 #nullable enable
+Sparc.Hosting.SparcChannelOptions.Security.get -> Sparc.IpcMemoryRegionSecurity?
+Sparc.Hosting.SparcChannelOptions.Security.set -> void

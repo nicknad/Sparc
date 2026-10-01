@@ -70,6 +70,44 @@ public static class SparcRing
         return ConnectConsumer(buffer, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Attaches to an already-mapped region (for example a Windows section
+    /// mapped from a transferred HANDLE), claims the producer role, and returns
+    /// the endpoint. Takes ownership of <paramref name="region"/>: disposing
+    /// the endpoint releases the mapping.
+    /// </summary>
+    public static IProducerEndpoint OpenProducer(
+        IIpcMemoryRegion region,
+        int capacity,
+        int slotSize,
+        SharedRingBufferOptions? options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        options ??= SharedRingBufferOptions.Default;
+        SharedRingBuffer buffer = SharedRingBuffer.FromRegion(region, capacity, slotSize, options);
+        return ConnectProducer(buffer, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// Attaches to an already-mapped region (for example a Windows section
+    /// mapped from a transferred HANDLE), claims the consumer role, and returns
+    /// the endpoint. Takes ownership of <paramref name="region"/>: disposing
+    /// the endpoint releases the mapping.
+    /// </summary>
+    public static IConsumerEndpoint OpenConsumer(
+        IIpcMemoryRegion region,
+        int capacity,
+        int slotSize,
+        SharedRingBufferOptions? options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        options ??= SharedRingBufferOptions.Default;
+        SharedRingBuffer buffer = SharedRingBuffer.FromRegion(region, capacity, slotSize, options);
+        return ConnectConsumer(buffer, options, cancellationToken);
+    }
+
     private static IProducerEndpoint ConnectProducer(
         SharedRingBuffer buffer, SharedRingBufferOptions options, CancellationToken cancellationToken)
     {

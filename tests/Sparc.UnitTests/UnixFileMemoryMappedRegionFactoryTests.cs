@@ -229,6 +229,32 @@ public class UnixFileMemoryMappedRegionFactoryTests
     }
 
     [Fact]
+    public void SecurityConfigurationIsRejectedInsteadOfSilentlyIgnored()
+    {
+        UnixFileMemoryMappedRegionFactory factory = NewFactory(out string directory);
+        Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
+        if (!factory.IsSupported)
+        {
+            return;
+        }
+
+        try
+        {
+            IpcRegionOptions options = new() { Security = new UnsupportedSecurity() };
+            Assert.Throws<IpcPlatformNotSupportedException>(
+                () => factory.CreateOrOpen(NewName(), 4096, options));
+            Assert.Throws<IpcPlatformNotSupportedException>(
+                () => factory.OpenExisting(NewName(), options));
+        }
+        finally
+        {
+            Cleanup(directory);
+        }
+    }
+
+    private sealed class UnsupportedSecurity : IpcMemoryRegionSecurity;
+
+    [Fact]
     public void NamesWithDirectorySeparatorsAreRejected()
     {
         UnixFileMemoryMappedRegionFactory factory = NewFactory(out string directory);

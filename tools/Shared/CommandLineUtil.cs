@@ -67,3 +67,23 @@ internal ref struct ArgumentReader(string[] args)
         return result;
     }
 }
+
+/// <summary>Parses the shared <c>--security</c> switch of the sample CLIs.</summary>
+internal static class SecurityFlag
+{
+    public static bool ParseCurrentUser(string value, string name)
+    {
+        if (!string.Equals(value, "current-user", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UsageException($"Argument '{name}' must be 'current-user'.");
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new UsageException(
+                $"Argument '{name}' is Windows-only (section DACLs); Unix regions are owner-only files.");
+        }
+
+        return true;
+    }
+}

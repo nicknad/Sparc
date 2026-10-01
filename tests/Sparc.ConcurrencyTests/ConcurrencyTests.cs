@@ -99,4 +99,42 @@ public class SharedRingBufferConcurrencyTests(ITestOutputHelper output)
         Assert.Equal(Total, producerView.TailSequence);
         Assert.Equal(Total, consumerView.HeadSequence);
     }
+
+    [Fact]
+    public void OneMillionMessagesStayOrderedAcrossSecuredMappings()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // section DACLs are Windows-only
+        }
+
+        const long Messages = 1_000_000;
+        string name = "spsc-secured-concurrency-" + Guid.NewGuid().ToString("N");
+        WindowsNamedMemoryMappedRegionFactory factory = new();
+
+        // The producer creates the section with a current-user-only DACL; the
+        // consumer joins without repeating the descriptor. The ring protocol is
+        // the same code path as the unsecured region.
+        using SharedRingBuffer producerView = SharedRingBuffer.OpenOrCreate(
+            factory, name, 1024, 256, new SharedRingBufferOptions
+            {
+                Security = WindowsSectionSecurity.CurrentUserOnly,
+            });
+        using SharedRingBuffer consumerView = SharedRingBuffer.OpenOrCreate(factory, name, 1024, 256);
+
+        producerView.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+        consumerView.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
+
+        TransferRunner.Result result = TransferRunner.Run(
+            new SharedTransferRing(producerView), new SharedTransferRing(consumerView),
+            Messages, payloadSize: 64, Timeout);
+
+        output.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"secured shared memory: {result.Consumed:N0} messages in {result.Elapsed.TotalSeconds:F3}s " +
+            $"= {result.MessagesPerSecond:N0} msg/s"));
+
+        Assert.Equal(Messages, result.Consumed);
+        Assert.Equal(Messages, producerView.TailSequence);
+        Assert.Equal(Messages, consumerView.HeadSequence);
+    }
 }

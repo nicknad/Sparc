@@ -21,6 +21,8 @@ internal sealed class ConsumerOptions
     public bool Notify { get; private set; }
     public bool RecreateStale { get; private set; }
     public bool RequireExisting { get; private set; }
+    public bool SecurityCurrentUser { get; private set; }
+    public string? SectionHandle { get; private set; }
     public bool Verify { get; private set; } = true;
     public bool VerifyPayload { get; private set; } = true;
     public bool Quiet { get; private set; }
@@ -31,9 +33,10 @@ internal sealed class ConsumerOptions
 
         Usage:
           consumer --name <buffer> [options]
+          consumer --section-handle <h> [options]     (Windows capability mode)
 
         Required:
-          --name <string>          Name of the shared memory region.
+          --name <string>          Name of the shared memory region. Not used with --section-handle.
 
         Options:
           --count <n>              Stop after n messages (default: 0 = until the producer stops).
@@ -48,6 +51,11 @@ internal sealed class ConsumerOptions
           --spin-only              Busy-spin instead of sleeping while the buffer is empty.
           --notify                 Block on an OS signal while empty (needs a matching
                                    --notify producer). Near-spin latency, no busy core.
+          --security current-user  Windows only: create the section with a DACL that grants
+                                   read/write access to the current user only (no Everyone).
+          --section-handle <h>     Windows only: join an unnamed section by transferred HANDLE
+                                   instead of a name (capability mode); '-' reads the handle
+                                   value from stdin. --notify is not supported in this mode.
           --recreate-stale         Delete and recreate an incompatible/stale region (destructive).
           --require-existing       Never create the region; fail if it does not exist.
           --no-verify              Do not validate sequence numbers and type.
@@ -100,6 +108,12 @@ internal sealed class ConsumerOptions
                 case "--takeover":
                     options.Takeover = true;
                     break;
+                case "--security":
+                    options.SecurityCurrentUser = SecurityFlag.ParseCurrentUser(reader.RequiredValue(arg, value), arg);
+                    break;
+                case "--section-handle":
+                    options.SectionHandle = reader.RequiredValue(arg, value);
+                    break;
                 case "--spin-only":
                     options.SpinOnly = true;
                     break;
@@ -126,9 +140,16 @@ internal sealed class ConsumerOptions
             }
         }
 
-        if (options.Name.Length == 0)
+        if (options.Name.Length == 0 && options.SectionHandle is null)
         {
-            throw new UsageException("--name is required.");
+            throw new UsageException("--name is required (or pass --section-handle).");
+        }
+
+        if (options.SectionHandle is not null && options.Notify)
+        {
+            throw new UsageException(
+                "--notify needs a named region both endpoints can derive a signal name from; " +
+                "it cannot be combined with --section-handle.");
         }
 
         if (options.SpinOnly && options.Notify)

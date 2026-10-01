@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Win32.SafeHandles;
 using Sparc.UnixMemoryMapped;
 using Sparc.WindowsMemoryMapped;
 using Sparc.Cli;
@@ -34,6 +35,12 @@ internal static class Program
         {
             return Run(options);
         }
+        catch (UsageException exception)
+        {
+            // Raised while resolving a --section-handle value at runtime.
+            Console.Error.WriteLine($"error: {exception.Message}");
+            return RingBufferExitCodes.UsageError;
+        }
         catch (RingBufferException exception)
         {
             Console.Error.WriteLine($"error: {exception.Message}");
@@ -51,24 +58,34 @@ internal static class Program
         IIpcMemoryRegionFactory factory = OperatingSystem.IsWindows()
             ? new WindowsNamedMemoryMappedRegionFactory()
             : new UnixFileMemoryMappedRegionFactory();
-        using IConsumerEndpoint buffer = SparcRing.OpenConsumer(
-            factory,
-            options.Name,
-            options.Capacity,
-            options.SlotSize,
-            new SharedRingBufferOptions
-            {
-                OpenTimeout = options.OpenTimeout,
-                RecreateIfStale = options.RecreateStale,
-                RequireExisting = options.RequireExisting,
-                AdoptExistingGeometry = true,
-                Takeover = options.Takeover,
-            });
+
+        SharedRingBufferOptions ringOptions = new()
+        {
+            OpenTimeout = options.OpenTimeout,
+            RecreateIfStale = options.RecreateStale,
+            RequireExisting = options.RequireExisting,
+            AdoptExistingGeometry = true,
+            Takeover = options.Takeover,
+            Security = options.SecurityCurrentUser ? WindowsSectionSecurity.CurrentUserOnly : null,
+        };
+
+        using SafeFileHandle? sectionHandle = options.SectionHandle is null
+            ? null
+            : SectionHandleTransfer.Acquire(options.SectionHandle);
+        using IConsumerEndpoint buffer = sectionHandle is null
+            ? SparcRing.OpenConsumer(
+                factory, options.Name, options.Capacity, options.SlotSize, ringOptions)
+            : SparcRing.OpenConsumer(
+                WindowsUnnamedSection.MapHandle(sectionHandle),
+                options.Capacity,
+                options.SlotSize,
+                ringOptions,
+                CancellationToken.None);
 
         if (!options.Quiet)
         {
             Console.WriteLine(
-                $"ready: role=consumer name={options.Name} capacity={buffer.Capacity} " +
+                $"ready: role=consumer name={buffer.Name} capacity={buffer.Capacity} " +
                 $"slotSize={buffer.SlotSize} maxPayload={buffer.MaxPayloadSize}");
         }
 

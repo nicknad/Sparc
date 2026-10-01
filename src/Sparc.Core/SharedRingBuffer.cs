@@ -108,6 +108,21 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
             ownsRegion: true);
     }
 
+    /// <summary>
+    /// Attaches to an already-mapped region (for example one mapped from a
+    /// transferred Windows section HANDLE) and takes ownership of it.
+    /// </summary>
+    public static SharedRingBuffer FromRegion(
+        IIpcMemoryRegion region,
+        int capacity = RingBufferLayout.DefaultCapacity,
+        int slotSize = RingBufferLayout.DefaultSlotSize,
+        SharedRingBufferOptions? options = null)
+    {
+        return new SharedRingBuffer(
+            RingBufferRegion.FromRegion(region, capacity, slotSize, options),
+            ownsRegion: true);
+    }
+
     /// <summary>The region name this buffer is attached to.</summary>
     public string Name => _region.Name;
 

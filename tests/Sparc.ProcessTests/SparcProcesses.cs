@@ -30,6 +30,7 @@ internal static class SparcProcesses
     {
         ProcessStartInfo startInfo = new("dotnet")
         {
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

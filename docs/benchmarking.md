@@ -18,13 +18,17 @@ treat everything as directional.
 
 ## 1. BenchmarkDotNet matrix
 
-Nine transports, five message sizes (16 B, 64 B, 256 B, 1 KB, 4 KB), each
+Eleven transports, five message sizes (16 B, 64 B, 256 B, 1 KB, 4 KB), each
 measured with two dedicated threads pumping 65,536 messages per invocation:
 
 * in-process SPSC ring buffer (`SpscArrayBenchmarks`)
 * in-process SPSC shared memory (`SpscSharedMemoryBenchmarks`)
 * lease-API variants of both (`SpscArrayLeaseBenchmarks`,
   `SpscSharedMemoryLeaseBenchmarks`)
+* DACL-secured shared memory (`SpscSecuredSharedMemoryBenchmarks`,
+  `SpscSecuredSharedMemoryLeaseBenchmarks`; the region is created with
+  `WindowsSectionSecurity.CurrentUserOnly`, on non-Windows these fall back to
+  the plain pump because there is no equivalent at this layer)
 * typed channel layer over the ring (`SpscChannelBenchmarks`)
 * `ConcurrentQueue<T>` + lock, `Channel<T>`, named pipe, TCP loopback
 
@@ -34,6 +38,9 @@ dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --filter *
 
 # just the ring transports
 dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --filter "*Spsc*"
+
+# plain vs secured shared memory only
+dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --filter "*Spsc*SharedMemory*"
 ```
 
 Representative copy-API results from the README (means, ns per message):
@@ -57,6 +64,12 @@ machinery. On the shared VM the copy/lease medians overlap (they land on both
 sides of each other across sizes), which is consistent with the cross-process
 result that zero-copy mainly removes consumer-side passes rather than the
 cursor handoff.
+
+The secured variants exist to show that transport security is a **setup-time**
+cost: the DACL is attached once in `CreateFileMapping`, and the measured loop is
+the identical ring code. On this VM the plain/secured pairs land inside the
+documented 2-5x scheduling noise and flip sign between captures; see the README
+benchmark section for the capture caveat.
 
 ---
 
@@ -161,14 +174,19 @@ dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --regression --to
 
 What it does:
 
-* Nine scenarios: copy and lease APIs for the array and shared-memory buffers
-  at 64 B, 4 KB and 16 KB, plus the typed channel layer at 8 B.
+* Eleven scenarios: copy and lease APIs for the array and shared-memory buffers
+  at 64 B, 4 KB and 16 KB, the same copy/lease pair over a DACL-secured
+  shared-memory region at 64 B (`shared-secured-copy-64`,
+  `shared-secured-lease-64`), plus the typed channel layer at 8 B.
 * Message counts are chosen so each measured run lasts at least a few hundred
   milliseconds (2M/500k/150k messages).
 * All pumps live for the whole run and rounds interleave scenarios, so host
   drift affects every scenario equally.
 * The metric is **best of 5 runs** (the least-disturbed sample), compared to
   `benchmarks/Sparc.Benchmarks/perf-baseline.json`.
+* The shipped baseline predates the two secured scenarios; until it is
+  re-captured with `--save-baseline`, they are measured and reported as
+  `no baseline` (which passes) side by side with their plain twins.
 * Default tolerance is 50%; the output explicitly warns that a shared VM can
   swing individual scenarios 2-5x and points at BDN for authoritative numbers.
 

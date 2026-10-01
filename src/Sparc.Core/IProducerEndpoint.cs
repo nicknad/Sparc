@@ -2,7 +2,7 @@ namespace Sparc.Core;
 
 /// <summary>
 /// The producer half of a shared ring region. Open one with
-/// <see cref="SparcRing.OpenProducer"/>; exactly one producer may exist per
+/// <see cref="SparcRing"/>; exactly one producer may exist per
 /// region and exactly one thread may publish on it.
 /// </summary>
 public interface IProducerEndpoint : IEndpoint

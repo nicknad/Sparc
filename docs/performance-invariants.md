@@ -364,15 +364,19 @@ mapping - no renegotiation, no resize.
 
 ### F4. No OS synchronization on the data path
 
-The OS is involved at setup (mapping) and, optionally, in `Notification` mode
-(a named semaphore wait). `SpinThenSleep` and `SpinOnly` never enter the kernel
-on a message.
+The OS is involved at setup (mapping, and any DACL check) and, optionally, in
+`Notification` mode (a named semaphore wait). `SpinThenSleep` and `SpinOnly`
+never enter the kernel on a message. Transport security is applied when the
+region is created/opened; no ACL or security API runs per message.
 
-### F5. Same trust domain only
+### F5. Authorized peers are trusted
 
-Both processes can write every byte of the region. There is no capability or
-memory protection between endpoints; do not share a region with an untrusted
-process.
+Both processes can write every byte of the region once they have access. The OS
+layer controls who obtains access — Windows section DACLs
+(`WindowsSectionSecurity`), unnamed-section HANDLE transfer, or Unix
+`0600`/`0700` files — and it is checked only at region creation/opening. It
+provides no message authentication or confidentiality between authorized peers;
+seal the payload above the transport when that is required.
 
 ---
 

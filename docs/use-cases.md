@@ -121,7 +121,7 @@ shape.
 | Values much larger than a slot | Chunk-stream them with `Sparc.Serialization` ([streaming.md](streaming.md)) instead of oversizing the ring |
 | Cross-machine transport | TCP/QUIC/gRPC |
 | Durability or replay after both processes die | A log/broker (Kafka, files); SPARC memory dies with its mappings |
-| Untrusted peer process | No isolation: both sides can corrupt the region. Use IPC with kernel-enforced boundaries |
+| Mutually hostile (untrusted) peers | SPARC assumes authorized peers are trusted: the OS primitive controls who obtains access, but an authorized peer can corrupt the region. Seal the payload (AEAD) above the transport, or use IPC with the kernel-enforced boundary you need |
 | Request/response RPC with retries | gRPC or a message broker; SPARC has no acknowledgements |
 | Need to know the peer is alive without traffic | Add a heartbeat message type over the ring; states are advisory |
 

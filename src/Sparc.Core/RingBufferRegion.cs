@@ -107,6 +107,7 @@ internal sealed class RingBufferRegion : IDisposable
         {
             OpenTimeout = options.OpenTimeout,
             RequireExisting = options.RequireExisting,
+            Security = options.Security,
             TimeProvider = options.TimeProvider,
         };
 
@@ -162,8 +163,28 @@ internal sealed class RingBufferRegion : IDisposable
             RecreateIfStale = false,
             RequireExisting = true,
             AdoptExistingGeometry = options.AdoptExistingGeometry,
+            Security = options.Security,
             TimeProvider = options.TimeProvider,
         });
+    }
+
+    /// <summary>
+    /// Adopts an already-mapped region (for example a Windows section mapped
+    /// from a transferred HANDLE). Initializes the header when the region
+    /// reports <see cref="IIpcMemoryRegion.IsCreator"/>, validates it
+    /// otherwise. Takes ownership of <paramref name="region"/>.
+    /// </summary>
+    public static RingBufferRegion FromRegion(
+        IIpcMemoryRegion region,
+        int capacity = RingBufferLayout.DefaultCapacity,
+        int slotSize = RingBufferLayout.DefaultSlotSize,
+        SharedRingBufferOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        RingBufferLayout.ValidateGeometry(capacity, slotSize);
+        options ??= SharedRingBufferOptions.Default;
+        return new RingBufferRegion(
+            region, capacity, slotSize, options.AdoptExistingGeometry, options.OpenTimeout, options.TimeProvider);
     }
 
     /// <summary>Reads the current header snapshot from the region.</summary>

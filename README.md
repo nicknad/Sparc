@@ -25,6 +25,9 @@ Producer process                          Consumer process
   zero allocations after initialization
 * `Volatile` acquire/release ordering (works on x86-64 and ARM64, not just "x86 is strong")
 * OS-specific mapping isolated behind `IIpcMemoryRegionFactory`
+* transport-level access control through the OS primitive: restrictive Windows
+  section DACLs (`WindowsSectionSecurity`) and optional unnamed-section HANDLE
+  transfer ([§7](#7-transport-security-and-isolation))
 * reusable sessions for CLIs, web apps and worker services (`TimeProvider`,
   `CancellationToken`, `ILogger`, structured results — no console coupling)
 * explicit, documented crash semantics
@@ -50,6 +53,7 @@ in mind, and open an issue for anything that does not hold up.
 
 `docs/` goes deeper than this file:
 
+* [docs/learning-path.md](docs/learning-path.md) — a guided route through the code and docs: sessions, experiments, checkpoints.
 * [docs/hosting.md](docs/hosting.md) — DI, hosted session/worker services, health checks, metrics, configuration.
 * [docs/channels.md](docs/channels.md) — the typed `SparcChannel<T>` layer: codecs, async API, semantics, overhead.
 * [docs/streaming.md](docs/streaming.md) — chunked streaming: messages larger than a slot (or the ring) through `SparcStreamWriter`/`SparcStreamReader`.
@@ -73,7 +77,7 @@ in mind, and open an issue for anything that does not hold up.
 │   ├── Sparc.Abstractions/           IIpcMemoryRegionFactory / IIpcMemoryRegion, options, exceptions
 │   ├── Sparc.InMemory/               pinned managed-array factory for tests and single-process development
 │   ├── Sparc.UnixMemoryMapped/       Unix file-backed implementation + DI registration
-│   ├── Sparc.WindowsMemoryMapped/    Windows named memory-mapped implementation + DI registration
+│   ├── Sparc.WindowsMemoryMapped/    Windows named memory-mapped implementation, section DACLs and unnamed-section capability mode + DI registration
 │   ├── Sparc.Core/            ring protocol: layout/framing, role-typed endpoints, SpscRingBuffer
 │   ├── Sparc.Client/          ProducerSession/ConsumerSession, message protocol, latency histogram
 │   ├── Sparc.Channels/        typed SparcChannel<T> writer/reader with codecs
@@ -184,10 +188,10 @@ latency(us): min=1.20 mean=122.44 p50=51.20 p90=102.40 p95=204.80 p99=409.60 p99
 ### CLI
 
 `producer --name <name> [--count n] [--size bytes] [--capacity slots] [--slot-size bytes]`
-`[--type int] [--open-timeout ms] [--full-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--notify] [--recreate-stale] [--require-existing] [--quiet]`
+`[--type int] [--open-timeout ms] [--full-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--notify] [--security current-user] [--section-handle h] [--recreate-stale] [--require-existing] [--quiet]`
 
 `consumer --name <name> [--count n] [--capacity slots] [--slot-size bytes] [--type int]`
-`[--open-timeout ms] [--idle-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--notify] [--recreate-stale] [--require-existing] [--no-verify] [--no-verify-payload] [--quiet]`
+`[--open-timeout ms] [--idle-timeout ms] [--delay-us us] [--takeover] [--spin-only] [--notify] [--security current-user] [--section-handle h] [--recreate-stale] [--require-existing] [--no-verify] [--no-verify-payload] [--quiet]`
 
 `--count 0` means "until the other endpoint stops" on the consumer and
 "until `Ctrl+C`" on the producer.
@@ -199,6 +203,9 @@ share one.
 simulation for tests and benchmark scenarios; 0 = off). The CLIs select the transport by OS:
 named memory-mapped files on Windows, file-backed regions elsewhere. `Ctrl+C` cancels the
 session gracefully.
+`--security current-user` (Windows) creates the section with a DACL that grants access to the
+current user only; `--section-handle -` (Windows) joins an unnamed section by reading a
+transferred HANDLE value from stdin instead of using `--name`. See [§7](#7-transport-security-and-isolation).
 
 ### Exit codes (both apps)
 
@@ -225,7 +232,7 @@ Reference the projects (or packages once published) you need:
 | `Sparc.Abstractions` | you only need the OS abstraction contracts |
 | `Sparc.InMemory` | you want the whole ring/session stack without the OS (tests, samples, single-process development) |
 | `Sparc.UnixMemoryMapped` | you run on Linux/macOS and want file-backed regions (+ DI) |
-| `Sparc.WindowsMemoryMapped` | you run on Windows and want named memory-mapped regions (+ DI) |
+| `Sparc.WindowsMemoryMapped` | you run on Windows and want named memory-mapped regions, optional section-DACL security or unnamed-section HANDLE transfer ([§7](#7-transport-security-and-isolation)) |
 | `Sparc.Core` | you need the role-typed endpoints (`SparcRing`, `IProducerEndpoint`, `IConsumerEndpoint`) or the in-process `SpscRingBuffer` |
 | `Sparc.Client` | you need producer/consumer sessions and verification |
 | `Sparc.Channels` | you want a typed `Channel<T>`-style async API with codecs |
@@ -580,14 +587,18 @@ performs the protocol handshake in `RingBufferRegion`:
 **Platform note.** .NET supports named memory-mapped files on **Windows only**
 (`MemoryMappedFile.CreateNew(name, …)` / `OpenExisting(name)` throw
 `PlatformNotSupportedException` on Unix), so `WindowsNamedMemoryMappedRegionFactory`
-checks this and fails with a clear `IpcPlatformNotSupportedException`. Unix-like
+checks this and fails with a clear `IpcPlatformNotSupportedException`. On Windows the
+factory **creates** sections through `CreateFileMapping` directly (the BCL has no
+`SECURITY_ATTRIBUTES` overload) and opens existing ones with `MemoryMappedFile.OpenExisting`,
+which requests only read/write section access. Unix-like
 systems use `UnixFileMemoryMappedRegionFactory` instead: one file per region under a
 directory (default `<temp>/sparc`, tmpfs on most Linux systems), mapped with
 `MemoryMappedFile.CreateFromFile`. Those files are persistent, so a crashed creator
 leaves a stale file behind; `TryReset` unlinks it (safe on POSIX while other
 processes still have it mapped) and the next `CreateOrOpen` starts from a fresh,
 zero-filled file. Nothing above the abstraction changes — both transports implement
-the same `IIpcMemoryRegionFactory`.
+the same `IIpcMemoryRegionFactory`; security is an optional configuration interpreted
+by the OS-specific layer ([§7](#7-transport-security-and-isolation)).
 
 ---
 
@@ -628,19 +639,25 @@ dotnet test Sparc.slnx -c Release        # .NET 11 SDK + Microsoft.Testing.Platf
   `Sparc.InMemory` factory, so they are OS-independent; Windows factory tests are
   guarded by `OperatingSystem.IsWindows()` and Unix factory tests by
   `!OperatingSystem.IsWindows()` (the Unix tests were verified under WSL Debian 13
-  with the pinned SDK).
+  with the pinned SDK). Windows security tests cover DACL validation, allowed and
+  denied opens (denial raised at region establishment), unnamed-section HANDLE
+  mappings, and ordered message exchange over a secured region.
 * **ConcurrencyTests.** Two dedicated threads move **10,000,000 messages** per transport,
   with sequence + checksum + fill-byte verification on every message, for both the
   in-process array buffer and the shared-memory buffer (two views of one region). A
-  tiny-capacity (2-slot) torture test (1,000,000 messages) and a no-allocation assertion
-  (writes+reads allocate < 4 KiB total).
+  tiny-capacity (2-slot) torture test (1,000,000 messages), a 1,000,000-message run over
+  a DACL-secured region, and a no-allocation assertion (writes+reads allocate < 4 KiB
+  total).
 * **FuzzTests.** CsCheck property tests for the untrusted-input paths: arbitrary
   header/slot/chunk bytes, geometry and region names, mixed copy/lease operation streams
   against a queue oracle, chunk reassembly through both readers, and hostile peers
   corrupting a published slot or chunk flags.
 * **ProcessTests.** Real `dotnet` child processes: both start orders, unlimited consumer
   drain, role conflict, geometry mismatch, killed consumer → producer times out, killed
-  producer → consumer exits incomplete, `--require-existing` timeout.
+  producer → consumer exits incomplete, `--require-existing` timeout, a full round trip
+  over a DACL-secured region (including killed-producer crash semantics), and an
+  unnamed-section consumer child joined through a `DuplicateHandle`d section HANDLE
+  (`--section-handle -`).
 
 The full suite runs on Windows; the Ubuntu CI lane runs the OS-independent unit,
 concurrency and fuzz suites, because the shared-memory concurrency half and the
@@ -654,7 +671,7 @@ check exit codes and message counts, not wall-clock timing.
 ## 6. Benchmarks
 
 ```powershell
-# throughput matrix (BenchmarkDotNet; 9 transports × 5 message sizes)
+# throughput matrix (BenchmarkDotNet; 11 transport variants × 5 message sizes)
 dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --filter *
 
 # in-process regression check against benchmarks/Sparc.Benchmarks/perf-baseline.json
@@ -678,10 +695,22 @@ dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --latency --trans
 
 Transports in the BDN matrix (all in one process): **in-process SPSC ring buffer**
 (`SpscRingBuffer`, managed array), **in-process SPSC shared memory** (`SharedRingBuffer`,
-two views of one memory-mapped region in the same process), **concurrent queue + lock**,
+two views of one memory-mapped region in the same process), **DACL-secured SPSC shared
+memory** (`SpscSecuredSharedMemoryBenchmarks` / `...LeaseBenchmarks`; region created with
+`WindowsSectionSecurity.CurrentUserOnly`), **concurrent queue + lock**,
 `Channel<T>`, **named pipe**, **TCP loopback**. Each transport runs two dedicated threads
 pumping `Batch = 65,536` messages per measured invocation. The cross-process numbers come
 from a different setup: separate producer/consumer executables over a real OS-backed region.
+
+Security is applied once, when the section is created; the measured steady-state loop is
+the same code path for the plain and secured pumps (no branches or calls are added per
+message). Alternated best-of-15 captures on this VM (1,000,000 messages per round, 64 B,
+two threads) landed inside this host's documented 2–5× scheduling noise and even flipped
+sign between captures: 13.8M vs 10.6M msg/s for the copy pair and 21.7M vs 35.2M for the
+lease pair (plain vs secured). That is the expected result when the ACL is never consulted
+on the message path; the regression runner carries the same pairs as
+`shared-copy-64`/`shared-secured-copy-64` and `shared-lease-64`/`shared-secured-lease-64`
+so a real per-message regression would show up next to its plain twin.
 
 Example run on this machine (Windows 11 VM 22621.4317, i7-1260P 2.50 GHz, 12 physical /
 16 logical cores, 15.69 GB RAM, BDN 0.16 preview, .NET 11 RC1,
@@ -788,11 +817,140 @@ Caveats worth knowing before quoting any of this:
 
 ---
 
-## 7. Scope boundary
+## 7. Transport security and isolation
+
+SPARC does not authenticate peers and does not encrypt messages. It provides
+**transport-level isolation through the underlying OS IPC primitive**: the ring
+protocol stays completely unaware of security, and access control is checked
+when the region is created or opened — never per message.
+
+```
+                 SPARC
+                   |
+             ring protocol
+                   |
+        OS memory-region layer   (IIpcMemoryRegionFactory)
+                   |
+       +-----------+-----------+
+       |                       |
+    Windows                  Unix
+       |                       |
+ section DACLs /          owner-only files
+ handle semantics         (0600 files in a 0700 dir)
+```
+
+### Security semantics
+
+| Layer | Question | Who provides it |
+|---|---|---|
+| Transport access control | Who is allowed to map the region? | The OS primitive: Windows section DACLs / Unix file modes and directory |
+| Message authentication | Can an authorized peer modify a message without detection? | **Not provided** by the transport or its ACL; layer an authenticated payload |
+| Message confidentiality | Can an authorized peer read the payload? | **Not provided**; anyone granted map access can read it |
+
+### Windows: restrictive named sections
+
+`WindowsSectionSecurity` is passed through `IpcRegionOptions.Security` (or
+`SharedRingBufferOptions.Security` from `SparcRing`):
+
+```csharp
+using Sparc;
+using Sparc.Core;
+using Sparc.WindowsMemoryMapped;
+
+WindowsNamedMemoryMappedRegionFactory factory = new();
+using IProducerEndpoint producer = SparcRing.OpenProducer(
+    factory, "orders", capacity: 1024, slotSize: 256,
+    new SharedRingBufferOptions
+    {
+        Security = WindowsSectionSecurity.CurrentUserOnly, // or ForSids/ForAccountNames/FromSddl
+    });
+```
+
+* The DACL is applied to the section object created by `CreateFileMapping`.
+* `CurrentUserOnly` grants the rights needed to map the section read/write to
+  the current user and nothing to `Everyone`, `Authenticated Users` or any
+  group.
+* `ForSids(...)`/`ForAccountNames(...)` grant exactly the listed identities;
+  `FromSddl(...)` takes an explicit descriptor and rejects one without a DACL
+  (a null DACL grants everyone full access).
+* The peer joins with the same call, with or without the descriptor; the OS
+  access-checks the open. Denial surfaces as `UnauthorizedAccessException` at
+  region establishment, never after the ring is open.
+* The DACL is not stored or consulted by SPARC afterwards; the data path is
+  byte-for-byte the same code as an unsecured region.
+
+On Unix the transport rejects `IpcRegionOptions.Security` instead of silently
+ignoring it; the boundary there is the owner-only file layout described in
+[SECURITY.md](SECURITY.md).
+
+### Windows: unnamed sections and HANDLE transfer (capability mode)
+
+Knowledge of a channel identifier alone must not grant access. An unnamed
+section has no OS-visible name at all:
+
+```
+Process A                                  Process B
+    | CreateFileMapping (unnamed, DACL)
+    v
+Unnamed section ─── HANDLE (inherit / DuplicateHandle) ───> MapViewOfFile
+    |                                                            |
+    +-- mapped by A                                              +-- mapped by B
+```
+
+```csharp
+// Process A (creator + producer)
+using WindowsSectionCapability capability = WindowsUnnamedSection.Create(
+    size, WindowsSectionSecurity.CurrentUserOnly, inheritHandle: true);
+using IProducerEndpoint producer = SparcRing.OpenProducer(
+    capability.Region, capacity, slotSize, options: null, CancellationToken.None);
+// transfer capability.Handle to B (handle inheritance or DuplicateHandle)
+
+// Process B (consumer)
+using SafeFileHandle handle = /* handle received from A */;
+using IConsumerEndpoint consumer = SparcRing.OpenConsumer(
+    WindowsUnnamedSection.MapHandle(handle), capacity, slotSize,
+    options: null, CancellationToken.None);
+```
+
+Handle transfer is deliberately *not* abstracted across operating systems:
+`IIpcMemoryRegionFactory` keeps its name-based contract, and Unix keeps its
+file-backed semantics. The CLIs expose this mode as
+`--section-handle <h>|-` (Windows only).
+
+### Threat model
+
+> SPARC assumes that authorized producer and consumer processes are trusted to
+> access the shared region. The OS security layer controls which processes may
+> obtain access to the region. It does not protect against a process that
+> already has valid access.
+>
+> A process that already possesses valid access to the shared memory can
+> potentially read or modify the shared region.
+>
+> For hostile or mutually untrusted peers, use an authenticated payload layer
+> or a transport with an appropriate security boundary.
+
+### Optional payload authentication / encryption
+
+Do not put cryptography in the ring. Serialize and seal the payload above the
+transport, then publish the sealed bytes:
+
+```
+application message -> serialize -> optional AEAD (AesGcm/HMAC) -> SPARC -> shared memory
+```
+
+The default hot path stays lock-free, allocation-free and free of cryptographic
+operations; [SECURITY.md](SECURITY.md) covers the trust model and
+[§6](#6-benchmarks) carries the secured-vs-plain benchmark pairs.
+
+---
+
+## 8. Scope boundary
 
 Not implemented (deliberately): MPSC/MPMC, dynamic resizing, persistence,
-networking, compression, encryption, multiple consumers/producers, heartbeats or
-automatic crash detection.
+networking, compression, multiple consumers/producers, heartbeats or automatic
+crash detection. Cryptography is not part of the transport either: payload
+authentication/encryption is layered above the ring ([§7](#7-transport-security-and-isolation)).
 
 Fixed slots stay the unit of storage. Values larger than a slot are split into a
 chunk chain by the optional `Sparc.Serialization` package

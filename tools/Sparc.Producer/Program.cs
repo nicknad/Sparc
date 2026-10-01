@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Win32.SafeHandles;
 using Sparc.UnixMemoryMapped;
 using Sparc.WindowsMemoryMapped;
 using Sparc.Cli;
@@ -34,6 +35,12 @@ internal static class Program
         {
             return Run(options);
         }
+        catch (UsageException exception)
+        {
+            // Raised while resolving a --section-handle value at runtime.
+            Console.Error.WriteLine($"error: {exception.Message}");
+            return RingBufferExitCodes.UsageError;
+        }
         catch (RingBufferException exception)
         {
             Console.Error.WriteLine($"error: {exception.Message}");
@@ -51,23 +58,33 @@ internal static class Program
         IIpcMemoryRegionFactory factory = OperatingSystem.IsWindows()
             ? new WindowsNamedMemoryMappedRegionFactory()
             : new UnixFileMemoryMappedRegionFactory();
-        using IProducerEndpoint buffer = SparcRing.OpenProducer(
-            factory,
-            options.Name,
-            options.Capacity,
-            options.EffectiveSlotSize,
-            new SharedRingBufferOptions
-            {
-                OpenTimeout = options.OpenTimeout,
-                RecreateIfStale = options.RecreateStale,
-                RequireExisting = options.RequireExisting,
-                Takeover = options.Takeover,
-            });
+
+        SharedRingBufferOptions ringOptions = new()
+        {
+            OpenTimeout = options.OpenTimeout,
+            RecreateIfStale = options.RecreateStale,
+            RequireExisting = options.RequireExisting,
+            Takeover = options.Takeover,
+            Security = options.SecurityCurrentUser ? WindowsSectionSecurity.CurrentUserOnly : null,
+        };
+
+        using SafeFileHandle? sectionHandle = options.SectionHandle is null
+            ? null
+            : SectionHandleTransfer.Acquire(options.SectionHandle);
+        using IProducerEndpoint buffer = sectionHandle is null
+            ? SparcRing.OpenProducer(
+                factory, options.Name, options.Capacity, options.EffectiveSlotSize, ringOptions)
+            : SparcRing.OpenProducer(
+                WindowsUnnamedSection.MapHandle(sectionHandle),
+                options.Capacity,
+                options.EffectiveSlotSize,
+                ringOptions,
+                CancellationToken.None);
 
         if (!options.Quiet)
         {
             Console.WriteLine(
-                $"ready: role=producer name={options.Name} capacity={buffer.Capacity} " +
+                $"ready: role=producer name={buffer.Name} capacity={buffer.Capacity} " +
                 $"slotSize={buffer.SlotSize} maxPayload={buffer.MaxPayloadSize}");
         }
 

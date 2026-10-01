@@ -7,7 +7,7 @@
     <IsPackable>true</IsPackable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);CS1591</NoWarn>
-    <Description>Windows named memory-mapped file implementation of IIpcMemoryRegionFactory, including AddWindowsNamedMemoryMappedIpc() dependency injection registration.</Description>
+    <Description>Windows named memory-mapped section implementation of IIpcMemoryRegionFactory with optional DACL-based section security (WindowsSectionSecurity), unnamed-section HANDLE-transfer capability mode, and AddWindowsNamedMemoryMappedIpc() dependency injection registration.</Description>
   </PropertyGroup>
 
   <ItemGroup>

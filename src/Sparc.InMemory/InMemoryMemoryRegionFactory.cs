@@ -17,6 +17,8 @@ namespace Sparc.InMemory;
 /// factory instance (in this or any other process) does not see them, and
 /// nothing survives the process. Use it for tests, samples and
 /// single-process development; it is not a transport between processes.
+/// <see cref="IpcRegionOptions.Security"/> is accepted and has no effect:
+/// there is no peer that could be denied access.
 /// </para>
 /// <para>
 /// Backing arrays are pinned for the lifetime of the process so a

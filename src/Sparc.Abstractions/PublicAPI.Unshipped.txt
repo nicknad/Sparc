@@ -1,1 +1,5 @@
 #nullable enable
+Sparc.IpcMemoryRegionSecurity
+Sparc.IpcMemoryRegionSecurity.IpcMemoryRegionSecurity() -> void
+Sparc.IpcRegionOptions.Security.get -> Sparc.IpcMemoryRegionSecurity?
+Sparc.IpcRegionOptions.Security.init -> void

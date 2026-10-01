@@ -32,6 +32,13 @@ public sealed class SparcChannelOptions
     /// <summary>When true, reclaim the endpoint role from a crashed peer.</summary>
     public bool Takeover { get; set; }
 
+    /// <summary>
+    /// Optional transport-level access control applied if this process creates
+    /// the region (for example <c>WindowsSectionSecurity.CurrentUserOnly</c>).
+    /// Ignored when joining an existing region; the ring never inspects it.
+    /// </summary>
+    public IpcMemoryRegionSecurity? Security { get; set; }
+
     /// <summary>Validates the name and geometry; throws <see cref="ArgumentException"/> otherwise.</summary>
     public void Validate()
     {
@@ -46,6 +53,7 @@ public sealed class SparcChannelOptions
         RecreateIfStale = RecreateIfStale,
         AdoptExistingGeometry = AdoptExistingGeometry,
         Takeover = Takeover,
+        Security = Security,
         TimeProvider = timeProvider,
     };
 }

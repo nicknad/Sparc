@@ -10,6 +10,7 @@
   <ItemGroup>
     <Compile Include="..\Shared\CommandLineUtil.cs" Link="CommandLineUtil.cs" />
     <Compile Include="..\Shared\RingBufferExitCodes.cs" Link="RingBufferExitCodes.cs" />
+    <Compile Include="..\Shared\SectionHandleTransfer.cs" Link="SectionHandleTransfer.cs" />
   </ItemGroup>
 
   <ItemGroup>

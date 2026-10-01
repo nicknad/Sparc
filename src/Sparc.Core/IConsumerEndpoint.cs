@@ -2,7 +2,7 @@ namespace Sparc.Core;
 
 /// <summary>
 /// The consumer half of a shared ring region. Open one with
-/// <see cref="SparcRing.OpenConsumer"/>; exactly one consumer may exist per
+/// <see cref="SparcRing"/>; exactly one consumer may exist per
 /// region and exactly one thread may read on it.
 /// </summary>
 public interface IConsumerEndpoint : IEndpoint

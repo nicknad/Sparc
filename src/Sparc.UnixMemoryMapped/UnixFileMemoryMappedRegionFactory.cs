@@ -83,6 +83,7 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
         RegionName.Validate(name);
         ArgumentOutOfRangeException.ThrowIfLessThan(size, 1);
         options ??= IpcRegionOptions.Default;
+        EnsureNoSecurity(options);
 
         string path = PathFor(name);
         long startTimestamp = options.TimeProvider.GetTimestamp();
@@ -109,6 +110,7 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
         EnsureSupported();
         RegionName.Validate(name);
         options ??= IpcRegionOptions.Default;
+        EnsureNoSecurity(options);
 
         string path = PathFor(name);
         long startTimestamp = options.TimeProvider.GetTimestamp();
@@ -222,6 +224,20 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
             throw new IpcPlatformNotSupportedException(
                 "Sparc.UnixMemoryMapped uses file-backed memory-mapped files and is meant for Unix-like systems. " +
                 "On Windows, use Sparc.WindowsMemoryMapped (named memory-mapped files) or Sparc.InMemory instead.");
+        }
+    }
+
+    private static void EnsureNoSecurity(IpcRegionOptions options)
+    {
+        if (options.Security is not null)
+        {
+            // Fail instead of silently dropping the caller's access-control
+            // request. Unix regions are already owner-only files (0600) in a
+            // private directory, which is the transport-level boundary here.
+            throw new IpcPlatformNotSupportedException(
+                "Sparc.UnixMemoryMapped does not interpret IpcRegionOptions.Security; " +
+                "Unix region files are protected by their owner-only mode (0600) and the region directory. " +
+                "Use a Windows section security configuration only with Sparc.WindowsMemoryMapped.");
         }
     }
 }

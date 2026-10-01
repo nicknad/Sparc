@@ -26,8 +26,15 @@ public sealed class SharedRingBufferOptions
     public bool AdoptExistingGeometry { get; init; }
 
     /// <summary>
-    /// When true, <see cref="SparcRing.OpenProducer"/> and
-    /// <see cref="SparcRing.OpenConsumer"/> reclaim the role from a crashed
+    /// Optional transport-level access control applied if this process creates
+    /// the region (for example a Windows section DACL). It is ignored when
+    /// joining an existing region. The ring protocol never inspects it; it is
+    /// passed through to the <see cref="IIpcMemoryRegionFactory"/>.
+    /// </summary>
+    public IpcMemoryRegionSecurity? Security { get; init; }
+
+    /// <summary>
+    /// When true, <see cref="SparcRing"/> reclaims the role from a crashed
     /// peer instead of failing with a role conflict. Destructive: the caller
     /// must be sure the previous holder is gone.
     /// </summary>

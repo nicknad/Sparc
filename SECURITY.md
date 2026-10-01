@@ -29,12 +29,20 @@ fix is available.
 
 ## Trust model
 
-SPARC is an intra-machine, same-trust-domain transport. It gives no
-confidentiality or integrity against any process that can open the region.
+SPARC is an intra-machine transport. Transport-level isolation is provided by
+the underlying OS IPC primitive; SPARC itself does not authenticate peers and
+does not encrypt messages.
 
 * **No peer authentication.** Any process with access to the region can publish
   well-formed messages, claim a role and complete the handshake. Messages are
   not authenticated: a peer's identity is whoever holds the OS access.
+* **Transport access control is the OS layer.** Which identities may open/map
+  a region is decided when the region is created or opened by the OS primitive:
+  Windows section DACLs (`WindowsSectionSecurity`) or Unix file ownership/mode
+  (`0600` plus a private directory). SPARC never checks access per message.
+* **Authorized peers are trusted.** A process with valid access can read or
+  modify every byte of the region. DACLs do not provide message integrity or
+  confidentiality against an authorized peer.
 * **Parsed data is treated as untrusted.** Header, geometry, chunk and slot
   frames are validated before use; corrupt or hostile bytes raise
   `RingBufferCorruptedException`, `RingBufferVersionMismatchException` or
@@ -46,9 +54,86 @@ confidentiality or integrity against any process that can open the region.
   advisory: a hard-killed process leaves `Running` behind and peers rely on
   timeouts. See the crash-semantics table in the README.
 
-Payload confidentiality, message authentication, replay protection and
-cross-user isolation are the application's responsibility. If peers are not
-equally trusted, add your own authentication/encryption on top of the payload.
+Message authentication, replay protection and message confidentiality between
+already-authorized peers are the application's responsibility: layer an
+authenticated/encrypted payload above the transport (below). If peers are not
+equally trusted, use a transport with the boundary you need instead of SPARC.
+
+## Transport access control
+
+### Windows: section DACLs
+
+`WindowsSectionSecurity` is applied when this process **creates** the region
+through `IpcRegionOptions.Security` (or `SharedRingBufferOptions.Security`).
+Openers only need the OS-granted access; the descriptor is not passed on a
+join.
+
+* **`CurrentUserOnly`** (also CLI `--security current-user`) builds a protected
+  DACL that grants the section rights needed to map read/write to the current
+  user's SID and nobody else: no `Everyone`, no `Authenticated Users`, no
+  implicit group access.
+* **`ForSids(...)` / `ForAccountNames(...)`** grant exactly the listed
+  identities; `FromSddl(...)` accepts an explicit descriptor. `FromSddl`
+  rejects descriptors without a DACL (a null DACL would grant everyone full
+  access).
+* The DACL is an ACE list on the section object; the kernel evaluates it when
+  a process calls `OpenFileMapping`/`CreateFileMapping` or maps a view. Denial
+  surfaces as `UnauthorizedAccessException` at region establishment (not after
+  the ring is open).
+* A join does not need the descriptor. The factory first tries the raw create
+  path; `ERROR_ALREADY_EXISTS` or `ERROR_ACCESS_DENIED` falls through to a plain
+  read/write open, which succeeds only when the DACL allows it.
+
+### Windows: unnamed sections and HANDLE transfer (capability mode)
+
+An unnamed section has no entry in the OS namespace, so knowledge of a channel
+identifier or name grants nothing. `WindowsUnnamedSection.Create` returns a
+`WindowsSectionCapability` holding the section HANDLE, which the owner passes
+to the peer (handle inheritance or `DuplicateHandle`); the peer maps it with
+`WindowsUnnamedSection.MapHandle` and adopts the region with
+`SparcRing.OpenProducer`/`OpenConsumer(IIpcMemoryRegion, ...)`. An optional
+`WindowsSectionSecurity` still applies as defence in depth.
+
+Handle transfer is inherently OS-specific and stays in the Windows package; the
+cross-platform `IIpcMemoryRegionFactory` contract is unchanged.
+
+### Unix
+
+`Sparc.UnixMemoryMapped` does not implement `IpcRegionOptions.Security`; a
+non-null value fails region establishment instead of being silently dropped.
+Its boundary is the private region directory (created `0700`) and owner-only
+`0600` region files, as described under Permissions.
+
+### What DACLs do not provide
+
+* **Not message authentication.** An authorized process can rewrite header
+  fields, slots, or published messages without detection.
+* **Not confidentiality against authorized peers.** Anyone granted read/map
+  access can read the payload.
+* **Not protection from replay or role theft.** Access control decides who may
+  open the section, not what they do with it afterwards.
+
+## Optional payload authentication / encryption
+
+SPARC deliberately keeps cryptography out of the transport. The intended shape
+is:
+
+```text
+application message
+        |  serialize + optional AEAD (key is yours to provision)
+        v
+authenticated/encrypted payload bytes
+        |  SPARC (fixed-size slot protocol, unchanged)
+        v
+shared memory
+```
+
+Authenticate/encrypt the serialized payload before `TryPublish`/`WriteAsync`
+and verify/decrypt after reading. The ring protocol, the hot path, the
+benchmarks and the crash semantics do not change. Use established AEAD
+primitives from a maintained library (for example `AesGcm` in
+`System.Security.Cryptography`) — do not hand-roll cryptography. Key
+distribution, rotation, nonces and replay windows are application concerns.
 
 ## Region names
 
@@ -76,11 +161,14 @@ channel.
   random GUID suffix) to avoid accidental collisions, and never accept a region
   name directly from an untrusted caller.
 
-On Windows the name is an OS object name: `MemoryMappedFile.CreateNew(name, …)`
-is used with no `Global\`/`Local\` prefix and no custom security descriptor, so
-namespace placement and access follow the OS defaults and the process's default
-DACL. SPARC does not add cross-user or cross-session isolation; do not assume
-any.
+On Windows the name is an OS object name. Without a security configuration the
+region is created with no custom descriptor, so the process's default DACL
+applies and any same-default-DACL process can open it. With
+`WindowsSectionSecurity` the DACL restricts opening/mapping to the listed
+identities; see "Transport access control" above. In capability mode
+(`WindowsUnnamedSection`) there is no name to configure at all. SPARC does not
+add cross-session isolation on its own; do not assume any unless you configure
+it.
 
 ## Permissions
 
@@ -107,14 +195,24 @@ any.
 
 **Windows (`Sparc.WindowsMemoryMapped`).**
 
-* Regions are named memory-mapped objects created with no security descriptor
-  and no namespace prefix, so the default DACL and OS namespace rules apply.
-  Any process that can open the object can read and modify every message; there
-  is no per-region ACL and no SPARC-level access check.
-* Notification uses named semaphores, also with default OS permissions. POSIX
-  named semaphores are created `0600` and are not unlinked on dispose, matching
-  the persistent region files; a stale raise is harmless because waiters always
-  re-check the buffer.
+* Regions are named memory-mapped sections. By default they are created with no
+  security descriptor and no namespace prefix, so the default DACL and OS
+  namespace rules apply. Any process that can open the object can read and
+  modify every message; there is no implicit per-region ACL and no SPARC-level
+  access check beyond what the OS performs.
+* Passing `WindowsSectionSecurity` (for example `CurrentUserOnly`, or the CLI
+  `--security current-user`) creates the section with a protected DACL that
+  grants only the listed identities the section rights required to map
+  read/write. Access denial is reported when the region is opened.
+* `WindowsUnnamedSection` creates a section with no name: it cannot be opened
+  by any process that does not hold the transferred HANDLE.
+* A process that is granted access can still read/tamper with messages; see the
+  threat model and "What DACLs do not provide" above.
+* Notification uses named semaphores, also with default OS permissions; the
+  semaphore name is derived from the region name and is not protected by
+  `WindowsSectionSecurity`. POSIX named semaphores are created `0600` and are
+  not unlinked on dispose, matching the persistent region files; a stale raise
+  is harmless because waiters always re-check the buffer.
 
 **In-memory (`Sparc.InMemory`).** Regions are process-local; nothing is exposed
 to other processes.

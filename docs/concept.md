@@ -61,14 +61,19 @@ Producer process                              Consumer process
 | Producer crash | Unpublished slots are invisible. Already published messages stay valid; the consumer detects the stall through its idle timeout. |
 | Liveness detection | Advisory only: endpoint states are updated on graceful start/stop, but a hard kill leaves `Running` (no heartbeat, by design). |
 | Payload size | Fixed per region (slot size minus an 8-byte frame); larger values are split into a chunk chain by `Sparc.Serialization` ([streaming.md](streaming.md)) or packed by the caller. |
-| Security boundary | None. Both processes map the same region; use it between processes of the same trust domain and user. |
+| Transport access control | Controlled by the OS primitive, not by SPARC: restrictive Windows section DACLs (`WindowsSectionSecurity`) or Unix owner-only files. Checked at region creation/opening, never per message. |
+| Message authentication / confidentiality | Not provided. A process with valid access can read and modify every message; layer an authenticated/encrypted payload above the transport ([SECURITY.md](../SECURITY.md), README §7). |
 
 ## What SPARC is not
 
 * Not MPMC: one producer and one consumer, per region.
 * Not persistent: memory dies with the last mapping (Windows) or the backing
   file (Unix).
-* Not networked: both endpoints must run on the same machine and share a user.
+* Not networked: both endpoints must run on the same machine.
+* Not a security boundary by itself: the OS primitive decides who may map the
+  region, and authorized peers are trusted with its contents. Message-level
+  authentication/confidentiality is layered above the transport
+  ([SECURITY.md](../SECURITY.md)).
 * Not variable-sized per message: every slot has the same size. Values larger
   than one slot are streamed as chunks (`Sparc.Serialization`); values whose
   encoded size varies are still packed by the caller.
@@ -105,6 +110,8 @@ wake-ups on every message, and per-message allocation.
    zero-copy leases.
 4. **Isolate the operating system.** The ring protocol does not reference any OS
    type; `IIpcMemoryRegionFactory` is the only seam (`src/Sparc.Abstractions`).
+   Transport security is an opaque configuration interpreted by the OS-specific
+   layer, so the ring algorithm stays unaware of ACLs and handle semantics.
 5. **Make the failure semantics explicit.** Crash behavior is documented and
    tested rather than assumed ([how-it-works.md](how-it-works.md) section 9,
    `tests/Sparc.ProcessTests`).

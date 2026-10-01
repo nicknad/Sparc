@@ -1,3 +1,7 @@
 #nullable enable
 Sparc.Core.IProducerEndpoint.CommitWrite(int length) -> void
 Sparc.Core.IProducerEndpoint.TryReserveWrite(int type, out System.Span<byte> payload) -> bool
+Sparc.Core.SharedRingBufferOptions.Security.get -> Sparc.IpcMemoryRegionSecurity?
+Sparc.Core.SharedRingBufferOptions.Security.init -> void
+static Sparc.Core.SparcRing.OpenConsumer(Sparc.IIpcMemoryRegion! region, int capacity, int slotSize, Sparc.Core.SharedRingBufferOptions? options, System.Threading.CancellationToken cancellationToken) -> Sparc.Core.IConsumerEndpoint!
+static Sparc.Core.SparcRing.OpenProducer(Sparc.IIpcMemoryRegion! region, int capacity, int slotSize, Sparc.Core.SharedRingBufferOptions? options, System.Threading.CancellationToken cancellationToken) -> Sparc.Core.IProducerEndpoint!

@@ -80,18 +80,29 @@ public sealed class SpscSharedMemoryPump : TwoThreadPump
     private readonly bool _lease;
 
     public SpscSharedMemoryPump(int payloadSize)
-        : this(payloadSize, lease: false)
+        : this(payloadSize, lease: false, secured: false)
     {
     }
 
-    private SpscSharedMemoryPump(int payloadSize, bool lease)
+    private SpscSharedMemoryPump(int payloadSize, bool lease, bool secured)
     {
         string name = "spsc-bench-" + Guid.NewGuid().ToString("N");
         int slotSize = SpscArrayPump.SlotSizeFor(payloadSize);
         IIpcMemoryRegionFactory factory = OperatingSystem.IsWindows()
             ? new WindowsNamedMemoryMappedRegionFactory()
             : new UnixFileMemoryMappedRegionFactory();
-        _producer = SharedRingBuffer.OpenOrCreate(factory, name, Capacity, slotSize);
+        SharedRingBufferOptions? options = null;
+        if (secured && OperatingSystem.IsWindows())
+        {
+            // Region establishment is the only place security is applied; the
+            // measured steady state below is the untouched ring hot path.
+            options = new SharedRingBufferOptions
+            {
+                Security = WindowsSectionSecurity.CurrentUserOnly,
+            };
+        }
+
+        _producer = SharedRingBuffer.OpenOrCreate(factory, name, Capacity, slotSize, options);
         _consumer = SharedRingBuffer.OpenOrCreate(factory, name, Capacity, slotSize);
         _producer.Connect(RingBufferEndpointRole.Producer);
         _consumer.Connect(RingBufferEndpointRole.Consumer);
@@ -99,7 +110,17 @@ public sealed class SpscSharedMemoryPump : TwoThreadPump
     }
 
     /// <summary>Shared-memory variant that uses the lease API instead of TryWrite/TryRead.</summary>
-    public static SpscSharedMemoryPump CreateLease(int payloadSize) => new(payloadSize, lease: true);
+    public static SpscSharedMemoryPump CreateLease(int payloadSize) => new(payloadSize, lease: true, secured: false);
+
+    /// <summary>
+    /// Shared-memory variant that creates the region with a Windows
+    /// current-user-only section DACL. On non-Windows systems there is no
+    /// equivalent at this layer, so it behaves like the unsecured pump.
+    /// </summary>
+    public static SpscSharedMemoryPump CreateSecured(int payloadSize) => new(payloadSize, lease: false, secured: true);
+
+    /// <summary>Lease variant of <see cref="CreateSecured"/>.</summary>
+    public static SpscSharedMemoryPump CreateSecuredLease(int payloadSize) => new(payloadSize, lease: true, secured: true);
 
     public override bool TryPublish(ReadOnlySpan<byte> payload)
     {

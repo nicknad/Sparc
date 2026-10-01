@@ -31,8 +31,12 @@ and size, `IsSupported`, `TryReset`).
 slotSize, options) delegate to `RingBufferRegion.CreateOrOpen`:
 
 1. Ask the factory for the region. The first caller creates it; others join.
-   On Windows this is `MemoryMappedFile.CreateNew` / `OpenExisting`; on Unix a
-   file plus `CreateFromFile`; in memory a pinned `byte[]`.
+   On Windows creation is a direct `CreateFileMapping` (so an optional
+   `WindowsSectionSecurity` DACL can be attached) followed by `MapViewOfFile`,
+   and joining is `MemoryMappedFile.OpenExisting`; on Unix a file plus
+   `CreateFromFile`; in memory a pinned `byte[]`. A region can also be adopted
+   from an already-mapped `IIpcMemoryRegion` (unnamed-section HANDLE transfer)
+   through the `SparcRing.OpenProducer`/`OpenConsumer` overloads.
 2. **If this process is the creator**, `Initialize` writes every header field
    *except the magic*, then publishes the magic with a release store:
    `Volatile.Write(ref *(ulong*)(pointer + MagicOffset), Magic)`. An opener that
@@ -253,14 +257,15 @@ with structured outcomes.
 
 | Implementation | Backing | Notes |
 |---|---|---|
-| `WindowsNamedMemoryMappedRegionFactory` | Named pagefile-backed section | Kernel object dies with the last handle, so a dead creator leaves nothing; `TryReset` is a no-op. |
-| `UnixFileMemoryMappedRegionFactory` | File under `<temp>/sparc` (tmpfs on most Linux systems) | Files persist, so stale regions are reclaimed by `TryReset` (unlink; safe while mapped). Created from the same handle it was created with, 0600 files in a 0700 directory. |
-| `InMemoryMemoryRegionFactory` | Pinned managed arrays in a `ConcurrentDictionary` | Process-local, factory-scoped; for tests, samples, single-process development. Removed regions stay pinned so existing pointers stay valid. |
+| `WindowsNamedMemoryMappedRegionFactory` | Named pagefile-backed section | Created with `CreateFileMapping` (optional `WindowsSectionSecurity` DACL) and mapped with `MapViewOfFile`; joined with `MemoryMappedFile.OpenExisting`, which requests read/write section access and therefore works under a restrictive DACL. Kernel object dies with the last handle, so a dead creator leaves nothing; `TryReset` is a no-op. `WindowsUnnamedSection` provides capability-mode sections with no OS name (HANDLE transfer only). |
+| `UnixFileMemoryMappedRegionFactory` | File under `<temp>/sparc` (tmpfs on most Linux systems) | Files persist, so stale regions are reclaimed by `TryReset` (unlink; safe while mapped). Created from the same handle it was created with, 0600 files in a 0700 directory. A non-null `IpcRegionOptions.Security` is rejected rather than ignored. |
+| `InMemoryMemoryRegionFactory` | Pinned managed arrays in a `ConcurrentDictionary` | Process-local, factory-scoped; for tests, samples, single-process development. Removed regions stay pinned so existing pointers stay valid. `Security` has no effect (no peer can reach the region). |
 
 All three expose a raw `byte*` through `IIpcMemoryRegion`. That is deliberate:
 cross-process atomics need stable addresses, which `MemoryMappedViewAccessor`
-methods and managed spans alone cannot express. The pointer is acquired once
-(`AcquirePointer`) and released on dispose.
+methods and managed spans alone cannot express. The pointer is obtained once —
+`MapViewOfFile` on the created Windows path, `AcquirePointer` on the BCL-backed
+open path — and released on dispose.
 
 ## 9. Crash semantics
 
