@@ -21,7 +21,7 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Move NuGet caches to D: (Windows)
+      - name: "Move NuGet caches to D: (Windows)"
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
