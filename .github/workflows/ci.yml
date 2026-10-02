@@ -21,6 +21,13 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Move NuGet caches to D: (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "NUGET_PACKAGES=D:\a\.nuget\packages" >> $env:GITHUB_ENV
+          "NUGET_HTTP_CACHE_PATH=D:\a\.nuget\v3-cache" >> $env:GITHUB_ENV
+
       - name: Build (warnings are errors)
         run: dotnet build Sparc.slnx -c Release --no-incremental
 
