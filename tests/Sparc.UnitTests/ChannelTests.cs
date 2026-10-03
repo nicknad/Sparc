@@ -257,6 +257,19 @@ public class ChannelTests
         await drain.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
     }
 
+    [Fact]
+    public void ThrowingCodecLeavesTheWriterUsable()
+    {
+        using SparcChannel<Order> channel = SparcChannel<Order>.CreateInProcess(
+            new InMemoryMemoryRegionFactory(), NewName(), new ThrowingCodec(), capacity: 4,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Throws<InvalidOperationException>(() => channel.Writer.TryWrite(new Order(1, "boom")));
+        Assert.True(channel.Writer.TryWrite(new Order(2, "ok")));
+        Assert.True(channel.Reader.TryRead(out Order? value));
+        Assert.Equal(2, value!.Id);
+    }
+
     public sealed record Order(int Id, string Sku);
 
     /// <summary>
@@ -370,5 +383,24 @@ public class ChannelTests
         }
 
         public int Decode(ReadOnlySpan<byte> source) => BinaryPrimitives.ReadInt32LittleEndian(source);
+    }
+
+    private sealed class ThrowingCodec : ISparcCodec<Order>
+    {
+        public int MaxSize => sizeof(int);
+
+        public int Encode(Order item, Span<byte> destination)
+        {
+            if (item.Id == 1)
+            {
+                throw new InvalidOperationException("codec failure");
+            }
+
+            BinaryPrimitives.WriteInt32LittleEndian(destination, item.Id);
+            return sizeof(int);
+        }
+
+        public Order Decode(ReadOnlySpan<byte> source) =>
+            new(BinaryPrimitives.ReadInt32LittleEndian(source), string.Empty);
     }
 }

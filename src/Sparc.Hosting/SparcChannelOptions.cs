@@ -54,13 +54,13 @@ public sealed class SparcChannelOptions
     /// </summary>
     public IReadOnlyList<string> GetWarnings() => RingBufferAdvisor.GetWarnings(Capacity, SlotSize);
 
-    internal SharedRingBufferOptions ToRingOptions(TimeProvider timeProvider) => new()
+    internal SharedRingBufferOptions ToRingOptions(TimeProvider timeProvider, bool sessionTakeover = false) => new()
     {
         OpenTimeout = OpenTimeout,
         RequireExisting = RequireExisting,
         RecreateIfStale = RecreateIfStale,
         AdoptExistingGeometry = AdoptExistingGeometry,
-        Takeover = Takeover,
+        Takeover = Takeover || sessionTakeover,
         Security = Security,
         TimeProvider = timeProvider,
     };

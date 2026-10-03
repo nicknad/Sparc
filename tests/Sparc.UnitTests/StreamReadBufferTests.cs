@@ -137,6 +137,31 @@ public class StreamReadBufferTests
     }
 
     [Fact]
+    public void CopyToLargerThanScratchStreamsAndConsumes()
+    {
+        using StreamPair pair = new();
+        byte[] message = NewMessage(200);
+        WriteMessage(pair.Writer, type: 5, message);
+
+        byte[] scratch = new byte[16];
+        SparcStreamReadBuffer buffer = pair.Reader.BeginMessage(
+            scratch, cancellationToken: TestContext.Current.CancellationToken);
+        try
+        {
+            byte[] destination = new byte[message.Length];
+            buffer.CopyTo(destination);
+
+            Assert.True(message.AsSpan().SequenceEqual(destination));
+            Assert.Equal(message.Length, buffer.BytesConsumed);
+            Assert.True(buffer.IsMessageComplete);
+        }
+        finally
+        {
+            buffer.Dispose();
+        }
+    }
+
+    [Fact]
     public void TryGetSpanBeyondScratchThrows()
     {
         using StreamPair pair = new();

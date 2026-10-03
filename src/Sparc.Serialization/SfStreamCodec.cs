@@ -74,13 +74,30 @@ public sealed class SfStreamCodec<T>
         }
         catch
         {
-            buffer.Abort();
+            AbortPreservingFailure(ref buffer);
             throw;
         }
 
         long written = buffer.BytesWritten;
         buffer.Dispose();
         return written;
+    }
+
+    /// <summary>
+    /// Best-effort abort. Aborting a published message can itself fail (for
+    /// example the 30-second reservation timeout while the ring is full), but
+    /// that must never replace the serializer's exception.
+    /// </summary>
+    private static void AbortPreservingFailure(ref SparcStreamWriteBuffer buffer)
+    {
+        try
+        {
+            buffer.Abort();
+        }
+        catch
+        {
+            // Keep the original serialization failure.
+        }
     }
 
     /// <summary>

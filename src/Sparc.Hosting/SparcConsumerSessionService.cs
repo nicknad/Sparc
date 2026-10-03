@@ -58,7 +58,7 @@ public sealed class SparcConsumerSessionService : BackgroundService
                     _channel.Name,
                     _channel.Capacity,
                     _channel.SlotSize,
-                    _channel.ToRingOptions(_timeProvider),
+                    _channel.ToRingOptions(_timeProvider, _session.Takeover),
                     stoppingToken),
                 stoppingToken).ConfigureAwait(false);
 
@@ -77,6 +77,12 @@ public sealed class SparcConsumerSessionService : BackgroundService
             _logger.LogInformation(
                 "SPARC consumer stopped: received={Received} reason={Reason} failure={Failure}",
                 result.Received, result.Reason, result.FailureMessage);
+
+            if (result.FailureMessage is { } failure)
+            {
+                // A structured session failure must not end the host silently.
+                throw new InvalidOperationException($"SPARC consumer session failed: {failure}");
+            }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {

@@ -14,4 +14,8 @@
     <ProjectReference Include="..\Sparc.Abstractions\Sparc.Abstractions.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sparc.Testing" />
+  </ItemGroup>
+
 </Project>

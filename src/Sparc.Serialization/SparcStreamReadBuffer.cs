@@ -30,8 +30,9 @@ namespace Sparc.Serialization;
 /// restart-resilient reads).
 /// </para>
 /// <para>
-/// <c>scratch</c> only needs to fit the largest window that crosses a chunk
-/// seam; windows that fit the current chunk are served in place.
+/// <c>scratch</c> only needs to fit the largest non-consuming window that
+/// crosses a chunk seam; <see cref="CopyTo"/> destinations larger than the
+/// scratch stream directly from the chunks and consume instead.
 /// </para>
 /// </remarks>
 [StructLayout(LayoutKind.Auto)]
@@ -257,10 +258,17 @@ public ref struct SparcStreamReadBuffer
     }
 
     /// <summary>
-    /// Copies the next <paramref name="destination"/>.Length bytes without
-    /// consuming them, stitching chunk seams into scratch as needed. Throws when
-    /// the message has fewer bytes left.
+    /// Copies the next <paramref name="destination"/>.Length bytes.
     /// </summary>
+    /// <remarks>
+    /// When the bytes fit the current contiguous window (the unconsumed scratch
+    /// bytes plus the current chunk) or the scratch buffer, they are copied
+    /// without being consumed, so they remain readable through
+    /// <see cref="GetUnreadSpan"/>/<see cref="TryGetSpan"/>/<see cref="Advance"/>.
+    /// A copy larger than the scratch streams chunk by chunk directly into the
+    /// destination and consumes the copied bytes; when the message ends first it
+    /// throws after consuming what was available.
+    /// </remarks>
     public void CopyTo(Span<byte> destination)
     {
         ThrowIfDisposed();
@@ -276,27 +284,27 @@ public ref struct SparcStreamReadBuffer
             return;
         }
 
-        if (scratchAvailable == 0)
+        EnsureLease();
+        int leaseAvailable = _hasLease ? _lease.Payload.Length - _leaseOffset : 0;
+        if (scratchAvailable + leaseAvailable >= destination.Length)
         {
-            // Contiguous fast path: copy straight from the chunk, no scratch.
-            EnsureLease();
-            if (!_hasLease)
+            // The whole window is already leased: copy straight from scratch
+            // and the chunk without consuming or restaging.
+            int fromScratch = Math.Min(scratchAvailable, destination.Length);
+            _scratch.Slice(_scratchStart, fromScratch).CopyTo(destination);
+            int fromLease = destination.Length - fromScratch;
+            if (fromLease > 0)
             {
-                throw new InvalidOperationException(
-                    $"The message has fewer than {destination.Length} bytes left; the copy was not started.");
+                _lease.Payload.Slice(_leaseOffset, fromLease).CopyTo(destination[fromScratch..]);
             }
 
-            if (_lease.Payload.Length - _leaseOffset >= destination.Length)
-            {
-                _lease.Payload.Slice(_leaseOffset, destination.Length).CopyTo(destination);
-                return;
-            }
+            return;
         }
 
         if (destination.Length > _scratch.Length)
         {
-            throw new InvalidOperationException(
-                $"destination of {destination.Length} bytes exceeds the {_scratch.Length}-byte scratch buffer.");
+            CopyConsuming(destination);
+            return;
         }
 
         if (!TryFillScratch(destination.Length))
@@ -306,6 +314,52 @@ public ref struct SparcStreamReadBuffer
         }
 
         _scratch.Slice(_scratchStart, destination.Length).CopyTo(destination);
+    }
+
+    /// <summary>
+    /// Streams a copy larger than the scratch directly into the destination,
+    /// releasing each chunk as it is copied.
+    /// </summary>
+    private void CopyConsuming(Span<byte> destination)
+    {
+        int copied = 0;
+
+        int scratchAvailable = _scratchEnd - _scratchStart;
+        if (scratchAvailable > 0)
+        {
+            int take = Math.Min(scratchAvailable, destination.Length);
+            _scratch.Slice(_scratchStart, take).CopyTo(destination);
+            _scratchStart += take;
+            if (_scratchStart == _scratchEnd)
+            {
+                _scratchStart = 0;
+                _scratchEnd = 0;
+            }
+
+            copied += take;
+            _bytesConsumed += take;
+        }
+
+        while (copied < destination.Length)
+        {
+            EnsureLease();
+            if (!_hasLease)
+            {
+                throw new InvalidOperationException(
+                    $"The message has fewer than {destination.Length} bytes left; " +
+                    $"{copied} bytes were copied and consumed.");
+            }
+
+            int take = Math.Min(_lease.Payload.Length - _leaseOffset, destination.Length - copied);
+            _lease.Payload.Slice(_leaseOffset, take).CopyTo(destination[copied..]);
+            _leaseOffset += take;
+            copied += take;
+            _bytesConsumed += take;
+            if (_leaseOffset == _lease.Payload.Length)
+            {
+                FinishLease();
+            }
+        }
     }
 
     /// <summary>Abandons an unread tail and releases the current chunk.</summary>

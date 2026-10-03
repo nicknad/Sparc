@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.MemoryMappedFiles;
 using Sparc;
 
@@ -58,21 +59,38 @@ public sealed class WindowsNamedMemoryMappedRegionFactory : IIpcMemoryRegionFact
 
         if (!options.RequireExisting)
         {
-            try
+            while (true)
             {
-                return WindowsSectionMemoryRegion.CreateNamed(name, size, security);
-            }
-            catch (Win32Exception exception) when (exception.NativeErrorCode == WindowsSectionApi.ErrorAlreadyExists)
-            {
-                // Already exists: fall through to the plain open.
-            }
-            catch (Win32Exception exception) when (exception.NativeErrorCode == WindowsSectionApi.ErrorAccessDenied)
-            {
-                // CreateFileMapping asks for broader section access than a
-                // restrictive DACL grants; a read/write open may still be
-                // allowed. If the region is actually absent, surface the
-                // denial instead of waiting for the open timeout.
-                return OpenExistingAfterCreateDenied(name, exception);
+                try
+                {
+                    return WindowsSectionMemoryRegion.CreateNamed(name, size, security);
+                }
+                catch (Win32Exception exception) when (exception.NativeErrorCode == WindowsSectionApi.ErrorAlreadyExists)
+                {
+                    // Another creator won the race. If it vanished before we
+                    // could open it (a crashed creator), loop and create again
+                    // instead of waiting out the open timeout for a corpse.
+                    if (TryOpenExisting(name, out MemoryMappedFile? existing))
+                    {
+                        return new NamedMemoryMappedRegion(name, existing, isCreator: false);
+                    }
+
+                    if (options.TimeProvider.GetElapsedTime(startTimestamp) >= options.OpenTimeout)
+                    {
+                        throw new IpcTimeoutException(
+                            $"Region '{name}' did not exist within {options.OpenTimeout.TotalMilliseconds:F0} ms.");
+                    }
+
+                    continue;
+                }
+                catch (Win32Exception exception) when (exception.NativeErrorCode == WindowsSectionApi.ErrorAccessDenied)
+                {
+                    // CreateFileMapping asks for broader section access than a
+                    // restrictive DACL grants; a read/write open may still be
+                    // allowed. If the region is actually absent, surface the
+                    // denial instead of waiting for the open timeout.
+                    return OpenExistingAfterCreateDenied(name, exception);
+                }
             }
         }
 
@@ -130,8 +148,25 @@ public sealed class WindowsNamedMemoryMappedRegionFactory : IIpcMemoryRegionFact
         }
     }
 
+    private static bool TryOpenExisting(string name, [NotNullWhen(true)] out MemoryMappedFile? file)
+    {
+        try
+        {
+#pragma warning disable CA1416 // Windows-only API; EnsureSupported guards every entry point.
+            file = MemoryMappedFile.OpenExisting(name, MemoryMappedFileRights.ReadWrite);
+#pragma warning restore CA1416
+            return true;
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            file = null;
+            return false;
+        }
+    }
+
     private static MemoryMappedFile OpenExistingWithTimeout(string name, IpcRegionOptions options, long startTimestamp)
     {
+        int delayMilliseconds = 2;
         while (true)
         {
             try
@@ -148,7 +183,11 @@ public sealed class WindowsNamedMemoryMappedRegionFactory : IIpcMemoryRegionFact
                         $"Region '{name}' did not exist within {options.OpenTimeout.TotalMilliseconds:F0} ms.");
                 }
 
-                Thread.Sleep(2);
+                // Back off so a 10-second wait does not construct thousands of
+                // exceptions; it still polls fast when the peer is about to
+                // publish.
+                Thread.Sleep(delayMilliseconds);
+                delayMilliseconds = Math.Min(delayMilliseconds * 2, 50);
             }
         }
     }

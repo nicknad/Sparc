@@ -144,6 +144,115 @@ public class SfStreamCodecTests
         Assert.True(allocated < 64, $"Expected near-zero allocations, saw {allocated} bytes.");
     }
 
+    [Fact]
+    public void AbortFailureDoesNotMaskTheSerializerException()
+    {
+        FailingAbortProducerEndpoint endpoint = new();
+        using SparcStreamWriter writer = new(endpoint);
+        SfStreamCodec<byte[]> codec = new(1, FailAfterPublishingAChunk, ReadBytes);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => codec.Write(writer, []));
+
+        Assert.Equal("serializer boom", exception.Message);
+    }
+
+    private static void FailAfterPublishingAChunk(ref SparcStreamWriteBuffer buffer, byte[] value)
+    {
+        Span<byte> span = buffer.GetSpan(56);
+        span.Clear();
+        buffer.Advance(56);
+        buffer.Flush(); // publish the chunk so Abort needs a new reservation
+        throw new InvalidOperationException("serializer boom");
+    }
+
+    /// <summary>
+    /// Succeeds the first reservation; every later reservation throws, which is
+    /// what <c>Abort</c> triggers for an already-published message.
+    /// </summary>
+    private sealed class FailingAbortProducerEndpoint : IProducerEndpoint
+    {
+        private readonly byte[] _slot = new byte[64];
+        private int _reservations;
+
+        public string Name => "failing-abort";
+
+        public int Capacity => 16;
+
+        public int SlotSize => 64;
+
+        public int MaxPayloadSize => 60;
+
+        public long HeadSequence => 0;
+
+        public long TailSequence => 0;
+
+        public bool IsEmpty => true;
+
+        public int Count => 0;
+
+        public RingBufferEndpointState ProducerState => RingBufferEndpointState.Running;
+
+        public RingBufferEndpointState ConsumerState => RingBufferEndpointState.Running;
+
+        public bool IsPeerWaiting() => false;
+
+        public void SetWaiting(bool waiting)
+        {
+        }
+
+        public void Abort()
+        {
+        }
+
+        public void Connect(bool takeover = false, CancellationToken cancellationToken = default)
+        {
+        }
+
+        public bool TryPublish(int type, ReadOnlySpan<byte> payload) => throw new NotSupportedException();
+
+        public void Publish(int type, ReadOnlySpan<byte> payload, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public bool TryReserveWrite(int type, int length, out Span<byte> payload) =>
+            throw new NotSupportedException();
+
+        public bool TryReserveWrite(int type, out Span<byte> payload)
+        {
+            if (Interlocked.Increment(ref _reservations) > 1)
+            {
+                throw new AbortReservationException();
+            }
+
+            payload = _slot;
+            return true;
+        }
+
+        public void CommitWrite()
+        {
+        }
+
+        public void CommitWrite(int length)
+        {
+        }
+
+        public void AbandonWrite()
+        {
+        }
+
+        public bool TryBeginWrite(int type, int length, out WriteLease lease) =>
+            throw new NotSupportedException();
+
+        public WriteLease BeginWrite(int type, int length, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class AbortReservationException : Exception;
+
     private static SfStreamCodec<byte[]> CreateByteArrayCodec() => new(1, WriteBytes, ReadBytes);
 
     private static void FailAfterBytes(ref SparcStreamWriteBuffer buffer, byte[] value)

@@ -36,6 +36,11 @@ public sealed class ProducerSession
 
         ProducerSessionOptions.Validate(
             options.Count, options.PayloadSize, options.PerMessageDelay, buffer.MaxPayloadSize);
+        if (options.FullTimeout < TimeSpan.Zero && options.FullTimeout != Timeout.InfiniteTimeSpan)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options), "FullTimeout must be non-negative or Timeout.InfiniteTimeSpan.");
+        }
 
         _buffer = buffer;
         _options = options;
@@ -61,6 +66,7 @@ public sealed class ProducerSession
         }
 
         long fullTimeoutTicks = (long)(_options.FullTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
+        bool fullTimeoutEnabled = _options.FullTimeout != Timeout.InfiniteTimeSpan;
         long pacingTicks = MessagePacer.TicksFor(_timeProvider, _options.PerMessageDelay);
         long progressInterval = _options.Count > 0 ? Math.Max(1, _options.Count / ProgressReports) : 0;
         SpinWait spin = new();
@@ -80,6 +86,12 @@ public sealed class ProducerSession
             {
                 WritePayload(slot, produced);
                 _buffer.CommitWrite();
+
+                // Full fence between our release store (tail) and the peer's
+                // waiting-flag load: without it a StoreLoad reorder on weak
+                // memory models lets both sides miss each other and the consumer
+                // sleeps a full wait slice.
+                Interlocked.MemoryBarrier();
                 SignalDataIfPeerWaiting();
 
                 if (firstPublishTimestamp == 0)
@@ -90,14 +102,23 @@ public sealed class ProducerSession
                 produced++;
                 fullSince = 0;
                 spin.Reset();
-                MessagePacer.Wait(_timeProvider, startTimestamp, produced, pacingTicks);
+                if (_options.Count == 0 || produced < _options.Count)
+                {
+                    // Never pace after the final message: it would inflate the
+                    // active window by one full delay.
+                    MessagePacer.Wait(_timeProvider, startTimestamp, produced, pacingTicks, cancellationToken);
+                }
 
                 if (progress is not null && progressInterval > 0 && produced % progressInterval == 0)
                 {
                     progress.Report(new ProducerProgress(produced, _timeProvider.GetElapsedTime(startTimestamp)));
                 }
 
-                if ((++cancellationCounter & CancellationCheckMask) == 0 && cancellationToken.IsCancellationRequested)
+                // Paced runs can spend minutes between mask boundaries, so poll
+                // every message once pacing is on; unpaced runs keep the batched
+                // fast-path check.
+                if ((pacingTicks > 0 || (++cancellationCounter & CancellationCheckMask) == 0)
+                    && cancellationToken.IsCancellationRequested)
                 {
                     reason = SessionStopReason.Cancelled;
                     break;
@@ -117,8 +138,10 @@ public sealed class ProducerSession
             {
                 fullSince = now;
             }
-            else if (now - fullSince >= fullTimeoutTicks)
+            else
             {
+                // Check the peer on every full iteration (a single volatile
+                // read): a stopped consumer should not cost a whole FullTimeout.
                 RingBufferEndpointState peer = _buffer.ConsumerState;
                 if (peer is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
                 {
@@ -126,8 +149,10 @@ public sealed class ProducerSession
                     failure = _options.Count > 0
                         ? $"consumer is gone (state={peer}) with {_options.Count - produced} messages unsent."
                         : $"consumer is gone (state={peer}) after {produced} messages.";
+                    break;
                 }
-                else
+
+                if (fullTimeoutEnabled && now - fullSince >= fullTimeoutTicks)
                 {
                     reason = SessionStopReason.Timeout;
                     failure = _options.Count > 0
@@ -135,9 +160,8 @@ public sealed class ProducerSession
                           $"({_options.Count - produced} messages unsent, consumer state={peer})."
                         : $"buffer stayed full for {_options.FullTimeout.TotalSeconds:F1}s " +
                           $"(produced={produced}, consumer state={peer}).";
+                    break;
                 }
-
-                break;
             }
 
             WaitWhileFull(ref spin, cancellationToken);
@@ -186,6 +210,7 @@ public sealed class ProducerSession
     public async Task<bool> WaitForPeerAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         long startTimestamp = _timeProvider.GetTimestamp();
+        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(5), _timeProvider);
         while (true)
         {
             RingBufferEndpointState peer = _buffer.ConsumerState;
@@ -204,7 +229,7 @@ public sealed class ProducerSession
                 return false;
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(5), _timeProvider, cancellationToken).ConfigureAwait(false);
+            await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -255,9 +280,22 @@ public sealed class ProducerSession
 
     private void SignalDataIfPeerWaiting()
     {
-        if (_options.WaitMode == SessionWaitMode.Notification && _buffer.IsPeerWaiting())
+        if (_options.WaitMode != SessionWaitMode.Notification)
         {
-            _options.Notification!.Data.Signal();
+            return;
+        }
+
+        try
+        {
+            if (_buffer.IsPeerWaiting())
+            {
+                _options.Notification!.Data.Signal();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // The endpoint was disposed concurrently (host shutdown); the
+            // data signal is advisory and the run loop reports the stop.
         }
     }
 
@@ -265,22 +303,34 @@ public sealed class ProducerSession
     {
         if (_options.WaitMode == SessionWaitMode.Notification)
         {
-            // Declare the wait before the re-check: if the consumer frees a slot
-            // after this point it reads the flag and raises the latch, so the
-            // wait below cannot miss it.
-            _buffer.SetWaiting(true);
             try
             {
-                if (_buffer.Count < _buffer.Capacity)
-                {
-                    return; // space appeared before the wait; retry the publish
-                }
+                // Declare the wait before the re-check: if the consumer frees a slot
+                // after this point it reads the flag and raises the latch, so the
+                // wait below cannot miss it.
+                _buffer.SetWaiting(true);
 
-                _options.Notification!.Space.Wait(SessionWaitTiming.WaitSlice, cancellationToken);
+                // Full fence between our waiting-flag store and the count load so
+                // the flag cannot be delayed past the check on weak memory models.
+                Interlocked.MemoryBarrier();
+                try
+                {
+                    if (_buffer.Count < _buffer.Capacity)
+                    {
+                        return; // space appeared before the wait; retry the publish
+                    }
+
+                    _options.Notification!.Space.Wait(SessionWaitTiming.WaitSlice, cancellationToken);
+                }
+                finally
+                {
+                    _buffer.SetWaiting(false);
+                }
             }
-            finally
+            catch (ObjectDisposedException)
             {
-                _buffer.SetWaiting(false);
+                // The endpoint was disposed concurrently (host shutdown); the
+                // next loop iteration observes the cancellation.
             }
 
             return;

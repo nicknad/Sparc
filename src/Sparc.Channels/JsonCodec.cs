@@ -1,12 +1,13 @@
+using System.Buffers;
 using System.Text.Json;
 using Sparc.Core;
 
 namespace Sparc.Channels;
 
 /// <summary>
-/// JSON codec for convenience. Encoding allocates (it goes through
-/// <see cref="JsonSerializer"/>), so hot paths should use a hand-written
-/// <see cref="ISparcCodec{T}"/> instead.
+/// JSON codec for convenience. Encoding serializes into a pooled buffer and
+/// copies once into the caller's destination span: no per-message
+/// <c>byte[]</c> allocation and no second copy.
 /// </summary>
 /// <typeparam name="T">Message type.</typeparam>
 public sealed class JsonCodec<T> : ISparcCodec<T>
@@ -31,19 +32,111 @@ public sealed class JsonCodec<T> : ISparcCodec<T>
     /// <inheritdoc />
     public int Encode(T item, Span<byte> destination)
     {
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(item, _options);
-        if (bytes.Length > Math.Min(destination.Length, MaxSize))
+        int limit = Math.Min(destination.Length, MaxSize);
+        if (limit <= 0)
         {
             throw new InvalidOperationException(
-                $"Encoded message of {bytes.Length} bytes exceeds the codec maximum of {MaxSize} bytes.");
+                $"Encoded message exceeds the codec maximum of {MaxSize} bytes.");
         }
 
-        bytes.CopyTo(destination);
-        return bytes.Length;
+        JsonWriterOptions writerOptions = _options is null
+            ? default
+            : new JsonWriterOptions
+            {
+                Indented = _options.WriteIndented,
+                Encoder = _options.Encoder,
+            };
+
+        PooledBufferWriter output = new(limit);
+        try
+        {
+            try
+            {
+                // Dispose flushes, so the overflow check must wrap the using.
+                using Utf8JsonWriter writer = new(output, writerOptions);
+                JsonSerializer.Serialize(writer, item, _options);
+                writer.Flush();
+            }
+            catch (EncodeOverflowException exception)
+            {
+                throw new InvalidOperationException(
+                    $"Encoded message exceeds the codec maximum of {MaxSize} bytes.", exception);
+            }
+
+            output.WrittenSpan.CopyTo(destination);
+            return output.Written;
+        }
+        finally
+        {
+            output.Dispose();
+        }
     }
 
     /// <inheritdoc />
     public T Decode(ReadOnlySpan<byte> source) =>
         JsonSerializer.Deserialize<T>(source, _options)
         ?? throw new RingBufferCorruptedException("JSON payload deserialized to null.");
+
+    /// <summary>Thrown when the encoded JSON does not fit the codec's maximum.</summary>
+    private sealed class EncodeOverflowException : Exception;
+
+    /// <summary>
+    /// A growable <see cref="IBufferWriter{T}"/> over an
+    /// <see cref="ArrayPool{T}"/> buffer that fails instead of growing once the
+    /// codec's maximum is exceeded. The serializer's minimum first window is
+    /// larger than some slots, so the capacity may exceed the limit while the
+    /// committed bytes never do.
+    /// </summary>
+    private sealed class PooledBufferWriter(int limit) : IBufferWriter<byte>, IDisposable
+    {
+        private byte[] _buffer = ArrayPool<byte>.Shared.Rent(Math.Max(limit, 256));
+        private int _written;
+
+        public ReadOnlySpan<byte> WrittenSpan => _buffer.AsSpan(0, _written);
+
+        public int Written => _written;
+
+        public void Advance(int count)
+        {
+            if (count < 0 || _written + count > limit)
+            {
+                throw new EncodeOverflowException();
+            }
+
+            _written += count;
+        }
+
+        public Memory<byte> GetMemory(int sizeHint = 0)
+        {
+            Ensure(sizeHint);
+            return _buffer.AsMemory(_written);
+        }
+
+        public Span<byte> GetSpan(int sizeHint = 0)
+        {
+            Ensure(sizeHint);
+            return _buffer.AsSpan(_written);
+        }
+
+        public void Dispose() => ArrayPool<byte>.Shared.Return(_buffer);
+
+        private void Ensure(int sizeHint)
+        {
+            if (sizeHint < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(sizeHint));
+            }
+
+            int required = _written + Math.Max(sizeHint, 1);
+            if (required <= _buffer.Length)
+            {
+                return;
+            }
+
+            byte[] next = ArrayPool<byte>.Shared.Rent(Math.Max(required, _buffer.Length * 2));
+            _buffer.AsSpan(0, _written).CopyTo(next);
+            ArrayPool<byte>.Shared.Return(_buffer);
+            _buffer = next;
+        }
+    }
 }

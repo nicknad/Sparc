@@ -51,20 +51,23 @@ public sealed class InMemoryMemoryRegionFactory : IIpcMemoryRegionFactory
             return OpenExisting(name, options);
         }
 
-        if (_regions.TryGetValue(name, out byte[]? existing))
+        while (true)
         {
-            return new Region(name, existing, isCreator: false);
-        }
+            if (_regions.TryGetValue(name, out byte[]? existing))
+            {
+                return new Region(name, existing, isCreator: false);
+            }
 
-        byte[] fresh = Allocate(size);
-        if (_regions.TryAdd(name, fresh))
-        {
-            return new Region(name, fresh, isCreator: true);
-        }
+            byte[] fresh = Allocate(size);
+            if (_regions.TryAdd(name, fresh))
+            {
+                return new Region(name, fresh, isCreator: true);
+            }
 
-        // Lost the create race to another caller; join the winner's buffer.
-        _regions.TryGetValue(name, out byte[]? winner);
-        return new Region(name, winner!, isCreator: false);
+            // Lost the create race: join the winner on the next loop; if that
+            // winner was concurrently reset, create again rather than ever
+            // constructing a region over a null buffer.
+        }
     }
 
     /// <inheritdoc />
@@ -97,6 +100,20 @@ public sealed class InMemoryMemoryRegionFactory : IIpcMemoryRegionFactory
     /// participant is using the region.
     /// </remarks>
     public bool TryReset(string name) => _regions.TryRemove(name, out _);
+
+    /// <summary>
+    /// Frees every pinned backing array. Only safe once no region instance is
+    /// in use; the test harness calls this when a per-scenario factory is torn
+    /// down. The public API never unpins, so a region pointer stays valid for
+    /// the process lifetime.
+    /// </summary>
+    internal void ReleasePinnedBuffers()
+    {
+        while (_pins.TryTake(out GCHandle handle))
+        {
+            handle.Free();
+        }
+    }
 
     private byte[] Allocate(long size)
     {

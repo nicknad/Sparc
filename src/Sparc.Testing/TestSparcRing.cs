@@ -13,8 +13,16 @@ namespace Sparc.Testing;
 /// </summary>
 public sealed class TestSparcRing : IDisposable
 {
-    private TestSparcRing(string name, IProducerEndpoint producer, IConsumerEndpoint consumer, TimeProvider timeProvider)
+    private readonly InMemoryMemoryRegionFactory _factory;
+
+    private TestSparcRing(
+        InMemoryMemoryRegionFactory factory,
+        string name,
+        IProducerEndpoint producer,
+        IConsumerEndpoint consumer,
+        TimeProvider timeProvider)
     {
+        _factory = factory;
         Name = name;
         Producer = producer;
         Consumer = consumer;
@@ -54,7 +62,7 @@ public sealed class TestSparcRing : IDisposable
         {
             SharedRingBufferOptions consumerOptions = new() { AdoptExistingGeometry = true };
             IConsumerEndpoint consumer = SparcRing.OpenConsumer(factory, regionName, capacity, slotSize, consumerOptions);
-            return new TestSparcRing(regionName, producer, consumer, timeProvider ?? TimeProvider.System);
+            return new TestSparcRing(factory, regionName, producer, consumer, timeProvider ?? TimeProvider.System);
         }
         catch
         {
@@ -71,10 +79,15 @@ public sealed class TestSparcRing : IDisposable
     public ConsumerSession CreateConsumerSession(ConsumerSessionOptions? options = null) =>
         new(Consumer, options ?? new ConsumerSessionOptions(), TimeProvider);
 
-    /// <summary>Disposes both endpoints (each publishes its graceful stop).</summary>
+    /// <summary>Disposes both endpoints (each publishes its graceful stop) and unpins the region.</summary>
     public void Dispose()
     {
         Producer.Dispose();
         Consumer.Dispose();
+
+        // This harness owns its factory, so it can release the pinned backing
+        // array once no endpoint can use it; production factories keep pins for
+        // the process lifetime.
+        _factory.ReleasePinnedBuffers();
     }
 }

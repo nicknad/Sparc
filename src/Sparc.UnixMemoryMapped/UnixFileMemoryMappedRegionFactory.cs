@@ -94,9 +94,12 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
             {
                 return new FileMemoryMappedRegion(name, CreateNew(path, size), isCreator: true);
             }
-            catch (IOException)
+            catch (IOException) when (File.Exists(path))
             {
-                // Already exists (or is being deleted): fall through to open.
+                // Already exists (a concurrent creator won, or a previous region
+                // file remains): fall through to open. An IOException without a
+                // file (for example ENOSPC or EMFILE) propagates instead of
+                // being masked as an open timeout.
             }
         }
 

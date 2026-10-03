@@ -6,6 +6,8 @@ namespace Sparc.Client;
 /// <summary>Options for <see cref="ConsumerSession"/>.</summary>
 public sealed class ConsumerSessionOptions
 {
+    private TimeSpan _idleTimeout = TimeSpan.FromSeconds(5);
+
     /// <summary>Stop after this many messages; 0 means "until the producer stops".</summary>
     public long Count { get; set; }
 
@@ -33,8 +35,19 @@ public sealed class ConsumerSessionOptions
     /// </summary>
     public bool VerifyPayload { get; set; } = true;
 
-    /// <summary>Give up when no messages arrive for this long.</summary>
-    public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromSeconds(5);
+    /// <summary>Give up when no messages arrive for this long; <see cref="Timeout.InfiniteTimeSpan"/> never gives up.</summary>
+    public TimeSpan IdleTimeout
+    {
+        get => _idleTimeout;
+        set
+        {
+            _idleTimeout = value;
+            IdleTimeoutConfigured = true;
+        }
+    }
+
+    /// <summary>True when the caller explicitly set <see cref="IdleTimeout"/>.</summary>
+    internal bool IdleTimeoutConfigured { get; private set; }
 
     /// <summary>
     /// Optional pause between consumed messages; <see cref="TimeSpan.Zero"/>

@@ -516,6 +516,76 @@ public class SessionTests
     }
 
     [Fact]
+    public void ProducerDetectsStoppedConsumerWithoutWaitingForFullTimeout()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+
+        SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+        consumerBuffer.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
+        consumerBuffer.Dispose();
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        ProducerRunResult result = new ProducerSession(producerBuffer, new ProducerSessionOptions
+        {
+            Count = 100,
+            PayloadSize = 32,
+            FullTimeout = TimeSpan.FromSeconds(30),
+        }).Run(TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.PeerStopped, result.Reason);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"took {stopwatch.Elapsed}");
+    }
+
+    [Fact]
+    public void ProducerDoesNotPaceAfterTheFinalMessage()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 4, 64);
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        ProducerRunResult result = new ProducerSession(producerBuffer, new ProducerSessionOptions
+        {
+            Count = 1,
+            PayloadSize = 32,
+            PerMessageDelay = TimeSpan.FromSeconds(5),
+            FullTimeout = TimeSpan.FromSeconds(10),
+        }).Run(TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.Completed, result.Reason);
+        Assert.Equal(1, result.Produced);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2), $"paced after the final message: {stopwatch.Elapsed}");
+    }
+
+    [Fact]
+    public async Task ConsumerWithInfiniteIdleTimeoutWaitsForTheProducer()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
+        producerBuffer.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
+
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 16, 64);
+        ConsumerSession consumer = new(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 0,
+            IdleTimeout = Timeout.InfiniteTimeSpan,
+        });
+
+        Task<ConsumerRunResult> task = consumer.RunAsync(TestContext.Current.CancellationToken);
+        await Task.Delay(300, TestContext.Current.CancellationToken);
+        Assert.False(task.IsCompleted);
+
+        producerBuffer.Dispose();
+        ConsumerRunResult result = await task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.Completed, result.Reason);
+        Assert.Equal(0, result.Received);
+    }
+
+    [Fact]
     public void SessionsRejectNegativePacing()
     {
         InMemoryMemoryRegionFactory factory = new();
@@ -531,6 +601,17 @@ public class SessionTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
         {
             PerMessageDelay = TimeSpan.FromMilliseconds(-1),
+        }));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ProducerSession(producerBuffer, new ProducerSessionOptions
+        {
+            PayloadSize = 32,
+            FullTimeout = TimeSpan.FromMilliseconds(-2),
+        }));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
+        {
+            IdleTimeout = TimeSpan.FromMilliseconds(-2),
         }));
     }
 
@@ -553,6 +634,71 @@ public class SessionTests
         }).Run(cancellation.Token);
 
         Assert.Equal(SessionStopReason.Cancelled, result.Reason);
+    }
+
+    [Fact]
+    public async Task PacedProducerHonoursCancellationPromptly()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using IProducerEndpoint producerBuffer = SparcRing.OpenProducer(
+            factory, name, 8_192, 64, cancellationToken: TestContext.Current.CancellationToken);
+
+        using CancellationTokenSource cancellation = new();
+        ProducerSession producer = new(producerBuffer, new ProducerSessionOptions
+        {
+            Count = 0,
+            PayloadSize = 32,
+            PerMessageDelay = TimeSpan.FromMilliseconds(50),
+            FullTimeout = TimeSpan.FromSeconds(30),
+        });
+
+        Task<ProducerRunResult> task = producer.RunAsync(cancellation.Token);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        await cancellation.CancelAsync();
+
+        ProducerRunResult result = await task.WaitAsync(
+            TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.Cancelled, result.Reason);
+        Assert.True(result.Produced < 8_192, $"produced {result.Produced}; the run should not have filled the ring.");
+    }
+
+    [Fact]
+    public async Task PacedConsumerHonoursCancellationPromptly()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using IProducerEndpoint producerBuffer = SparcRing.OpenProducer(
+            factory, name, 8_192, 64, cancellationToken: TestContext.Current.CancellationToken);
+        using IConsumerEndpoint consumerBuffer = SparcRing.OpenConsumer(
+            factory, name, 8_192, 64, cancellationToken: TestContext.Current.CancellationToken);
+
+        byte[] payload = new byte[32];
+        RingBufferMessage.FillPayload(payload);
+        for (int sequence = 0; sequence < 8_192; sequence++)
+        {
+            RingBufferMessage.Write(payload, sequence, Stopwatch.GetTimestamp());
+            Assert.True(producerBuffer.TryPublish(1, payload));
+        }
+
+        using CancellationTokenSource cancellation = new();
+        ConsumerSession consumer = new(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 0,
+            IdleTimeout = TimeSpan.FromMinutes(5),
+            PerMessageDelay = TimeSpan.FromMilliseconds(50),
+        });
+
+        Task<ConsumerRunResult> task = consumer.RunAsync(cancellation.Token);
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        await cancellation.CancelAsync();
+
+        ConsumerRunResult result = await task.WaitAsync(
+            TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.Cancelled, result.Reason);
+        Assert.True(result.Received < 8_192);
     }
 
     /// <summary>A structurally valid session message whose payload is not the fill pattern.</summary>

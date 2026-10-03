@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Sparc;
@@ -160,7 +161,7 @@ public class HostingTests
         using ServiceProvider provider = services.BuildServiceProvider();
         HealthCheckService health = provider.GetRequiredService<HealthCheckService>();
         HealthReport report = await health.CheckHealthAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(HealthStatus.Unhealthy, report.Status);
+        Assert.Equal(HealthStatus.Degraded, report.Status);
 
         WorkerSignals signals = provider.GetRequiredService<WorkerSignals>();
         SparcProducerWorkerService<BlockingProducerWorker> producer =
@@ -180,8 +181,9 @@ public class HostingTests
         await Task.WhenAll(producer.Completion, consumer.Completion)
             .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
+        // Both roles have gone away with no failure: degraded, not healthy.
         report = await health.CheckHealthAsync(TestContext.Current.CancellationToken);
-        Assert.Equal(HealthStatus.Unhealthy, report.Status);
+        Assert.Equal(HealthStatus.Degraded, report.Status);
     }
 
     [Fact]
@@ -228,6 +230,64 @@ public class HostingTests
         Assert.Equal("cfg-channel", options.Name);
         Assert.Equal(128, options.Capacity);
         Assert.Equal(512, options.SlotSize);
+    }
+
+    [Fact]
+    public void DuplicateSessionRegistrationDoesNotDoubleHost()
+    {
+        ServiceCollection services = CreateServices(
+            NewName(),
+            registered =>
+            {
+                registered.AddSparcProducerSession();
+                registered.AddSparcProducerSession();
+                registered.AddSparcConsumerSession();
+                registered.AddSparcConsumerSession();
+            });
+
+        using ServiceProvider provider = services.BuildServiceProvider();
+        List<IHostedService> hosted = [.. provider.GetServices<IHostedService>()];
+        Assert.Single(hosted.OfType<SparcProducerSessionService>());
+        Assert.Single(hosted.OfType<SparcConsumerSessionService>());
+    }
+
+    [Fact]
+    public void HostedConsumerDefaultsToInfiniteIdleTimeout()
+    {
+        ServiceCollection services = CreateServices(NewName(), registered => registered.AddSparcConsumerSession());
+        using ServiceProvider provider = services.BuildServiceProvider();
+        ConsumerSessionOptions options = provider.GetRequiredService<ConsumerSessionOptions>();
+        Assert.Equal(Timeout.InfiniteTimeSpan, options.IdleTimeout);
+
+        ServiceCollection configured = CreateServices(
+            NewName(),
+            registered => registered.AddSparcConsumerSession(session => session.IdleTimeout = TimeSpan.FromSeconds(1)));
+        using ServiceProvider configuredProvider = configured.BuildServiceProvider();
+        Assert.Equal(
+            TimeSpan.FromSeconds(1),
+            configuredProvider.GetRequiredService<ConsumerSessionOptions>().IdleTimeout);
+    }
+
+    [Fact]
+    public async Task HealthCheckConsumesSessionFailures()
+    {
+        SparcChannelStatus status = new(NewName())
+        {
+            ConsumerResult = new ConsumerRunResult(
+                3,
+                96,
+                TimeSpan.Zero,
+                SessionStopReason.VerificationFailed,
+                new Sparc.Client.Diagnostics.LatencyHistogram(),
+                "sequence mismatch at message 3: expected 3, received 7."),
+        };
+        SparcChannelHealthCheck check = new(status, new SparcHealthOptions());
+
+        HealthCheckResult result = await check.CheckHealthAsync(
+            new HealthCheckContext(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(HealthStatus.Unhealthy, result.Status);
+        Assert.Contains("sequence mismatch", result.Description, StringComparison.Ordinal);
     }
 
     private sealed class WorkerSignals

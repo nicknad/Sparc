@@ -32,6 +32,12 @@ namespace Sparc.Serialization;
 /// <c>ref</c> and must not copy it (SerializerFoundation's SF002 analyzer flags
 /// copies by mistake).
 /// </para>
+/// <para>
+/// The current chunk is held as a raw pointer because a mutable struct cannot
+/// store a <see cref="Span{T}"/>; the endpoint's reservation therefore has to
+/// keep the slot memory fixed until the chunk is committed or abandoned (see
+/// <see cref="IProducerEndpoint.TryReserveWrite(int, out Span{byte})"/>).
+/// </para>
 /// </remarks>
 [StructLayout(LayoutKind.Auto)]
 public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
@@ -164,8 +170,7 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
             {
                 _endpoint.AbandonWrite();
                 _hasChunk = false;
-                _chunk = null;
-                _used = 0;
+                ReleaseChunk();
             }
 
             _completed = true;
@@ -214,6 +219,11 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
         _firstOfMessage = false;
         _hasChunk = false;
         _publishedAny = true;
+        ReleaseChunk();
+    }
+
+    private void ReleaseChunk()
+    {
         _chunk = null;
         _used = 0;
     }

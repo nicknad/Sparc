@@ -1,12 +1,14 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Sparc.Client;
 using Sparc.Core;
 
 namespace Sparc.Hosting;
 
 /// <summary>
 /// Reports the default channel's endpoint states: healthy when every required
-/// role is running, degraded while a required peer has not appeared yet, and
-/// unhealthy when a role stopped, faulted or failed to open.
+/// role is running, degraded while a required role has not opened yet, and
+/// unhealthy when a role stopped or faulted, opening failed, or a hosted
+/// session reported a structured failure (timeout, verification, peer loss).
 /// </summary>
 public sealed class SparcChannelHealthCheck(SparcChannelStatus status, SparcHealthOptions options) : IHealthCheck
 {
@@ -33,6 +35,9 @@ public sealed class SparcChannelHealthCheck(SparcChannelStatus status, SparcHeal
             unhealthy.Add(failure);
             data["failure"] = failure;
         }
+
+        AddSessionResult("producer", status.ProducerResult?.Reason, status.ProducerResult?.FailureMessage, unhealthy, data);
+        AddSessionResult("consumer", status.ConsumerResult?.Reason, status.ConsumerResult?.FailureMessage, unhealthy, data);
 
         if (unhealthy.Count > 0)
         {
@@ -62,7 +67,10 @@ public sealed class SparcChannelHealthCheck(SparcChannelStatus status, SparcHeal
 
         if (endpoint is null)
         {
-            unhealthy.Add($"{role} endpoint is not open");
+            // Required but not opened yet: the peer has not appeared, which is a
+            // degraded state, not a failure. Open failures record a failure
+            // message separately.
+            degraded.Add($"{role} endpoint is not open");
             return;
         }
 
@@ -76,6 +84,24 @@ public sealed class SparcChannelHealthCheck(SparcChannelStatus status, SparcHeal
             default:
                 unhealthy.Add($"{role} is {state}");
                 return;
+        }
+    }
+
+    private static void AddSessionResult(
+        string role,
+        SessionStopReason? reason,
+        string? failure,
+        List<string> unhealthy,
+        Dictionary<string, object> data)
+    {
+        if (reason is { } stopReason)
+        {
+            data[role + "Reason"] = stopReason.ToString();
+        }
+
+        if (failure is { } message)
+        {
+            unhealthy.Add($"{role} session failed: {message}");
         }
     }
 }

@@ -102,9 +102,16 @@ public static class SparcServiceCollectionExtensions
         ProducerSessionOptions options = new();
         configure?.Invoke(options);
 
+        // Guard the hosted-service forwarder so a duplicate AddSparcProducerSession
+        // cannot start the same session twice.
+        bool hosted = services.Any(descriptor => descriptor.ServiceType == typeof(SparcProducerSessionService));
         services.TryAddSingleton(options);
         services.TryAddSingleton<SparcProducerSessionService>();
-        services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcProducerSessionService>());
+        if (!hosted)
+        {
+            services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcProducerSessionService>());
+        }
+
         return services;
     }
 
@@ -118,9 +125,23 @@ public static class SparcServiceCollectionExtensions
         ConsumerSessionOptions options = new();
         configure?.Invoke(options);
 
+        // A hosted consumer is long-running: an unconfigured 5-second idle
+        // timeout would end the service whenever the peer is quiet at startup.
+        if (options.Count == 0 && !options.IdleTimeoutConfigured)
+        {
+            options.IdleTimeout = Timeout.InfiniteTimeSpan;
+        }
+
+        // Guard the hosted-service forwarder so a duplicate AddSparcConsumerSession
+        // cannot start the same session twice.
+        bool hosted = services.Any(descriptor => descriptor.ServiceType == typeof(SparcConsumerSessionService));
         services.TryAddSingleton(options);
         services.TryAddSingleton<SparcConsumerSessionService>();
-        services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcConsumerSessionService>());
+        if (!hosted)
+        {
+            services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcConsumerSessionService>());
+        }
+
         return services;
     }
 
@@ -131,9 +152,14 @@ public static class SparcServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         RequireIpc(services);
 
+        bool hosted = services.Any(descriptor => descriptor.ServiceType == typeof(SparcProducerWorkerService<TWorker>));
         services.TryAddSingleton<TWorker>();
         services.TryAddSingleton<SparcProducerWorkerService<TWorker>>();
-        services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcProducerWorkerService<TWorker>>());
+        if (!hosted)
+        {
+            services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcProducerWorkerService<TWorker>>());
+        }
+
         return services;
     }
 
@@ -144,9 +170,14 @@ public static class SparcServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         RequireIpc(services);
 
+        bool hosted = services.Any(descriptor => descriptor.ServiceType == typeof(SparcConsumerWorkerService<TWorker>));
         services.TryAddSingleton<TWorker>();
         services.TryAddSingleton<SparcConsumerWorkerService<TWorker>>();
-        services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcConsumerWorkerService<TWorker>>());
+        if (!hosted)
+        {
+            services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcConsumerWorkerService<TWorker>>());
+        }
+
         return services;
     }
 

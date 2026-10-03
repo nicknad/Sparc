@@ -47,10 +47,13 @@ public sealed class WindowsSectionSecurity : IpcMemoryRegionSecurity
 
     /// <summary>
     /// A DACL that grants read/write section access to the process's current
-    /// Windows user and to no one else.
+    /// Windows user and to no one else. Built once and cached: the current
+    /// token's user SID does not change for the process.
     /// </summary>
-    public static WindowsSectionSecurity CurrentUserOnly =>
-        ForSids(GetCurrentUserSid());
+    public static WindowsSectionSecurity CurrentUserOnly => CurrentUserOnlyHolder.Value;
+
+    private static readonly Lazy<WindowsSectionSecurity> CurrentUserOnlyHolder =
+        new(static () => ForSids(GetCurrentUserSid()), LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>The canonical SDDL form of the descriptor (access section only).</summary>
     public string Sddl { get; }

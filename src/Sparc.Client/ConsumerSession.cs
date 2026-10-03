@@ -30,6 +30,11 @@ public sealed class ConsumerSession
         ArgumentNullException.ThrowIfNull(buffer);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentOutOfRangeException.ThrowIfLessThan(options.PerMessageDelay, TimeSpan.Zero);
+        if (options.IdleTimeout < TimeSpan.Zero && options.IdleTimeout != Timeout.InfiniteTimeSpan)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options), "IdleTimeout must be non-negative or Timeout.InfiniteTimeSpan.");
+        }
         if (options.WaitMode == SessionWaitMode.Notification && options.Notification is null)
         {
             throw new ArgumentException(
@@ -66,6 +71,7 @@ public sealed class ConsumerSession
         long idleSince = 0;
         long cancellationCounter = 0;
         long idleTimeoutTicks = (long)(_options.IdleTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
+        bool idleTimeoutEnabled = _options.IdleTimeout != Timeout.InfiniteTimeSpan;
         long pacingTicks = MessagePacer.TicksFor(_timeProvider, _options.PerMessageDelay);
         long progressInterval = _options.Count > 0 ? Math.Max(1, _options.Count / ProgressReports) : 0;
         long runStartTimestamp = _timeProvider.GetTimestamp();
@@ -78,7 +84,12 @@ public sealed class ConsumerSession
             {
                 spin.Reset();
                 idleSince = 0;
-                MessagePacer.Wait(_timeProvider, runStartTimestamp, state.Received, pacingTicks);
+                if (_options.Count == 0 || state.Received < _options.Count)
+                {
+                    // Never pace after the final message: it would inflate the
+                    // run window by one full delay.
+                    MessagePacer.Wait(_timeProvider, runStartTimestamp, state.Received, pacingTicks, cancellationToken);
+                }
 
                 if (progress is not null && progressInterval > 0 && state.Received % progressInterval == 0)
                 {
@@ -86,7 +97,11 @@ public sealed class ConsumerSession
                         state.Received, state.ReceivedBytes, _timeProvider.GetElapsedTime(runStartTimestamp)));
                 }
 
-                if ((++cancellationCounter & CancellationCheckMask) == 0 && cancellationToken.IsCancellationRequested)
+                // Paced runs can spend minutes between mask boundaries, so poll
+                // every message once pacing is on; unpaced runs keep the batched
+                // fast-path check.
+                if ((pacingTicks > 0 || (++cancellationCounter & CancellationCheckMask) == 0)
+                    && cancellationToken.IsCancellationRequested)
                 {
                     reason = SessionStopReason.Cancelled;
                     break;
@@ -105,7 +120,7 @@ public sealed class ConsumerSession
             RingBufferEndpointState producer = _buffer.ProducerState;
             if (producer is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
             {
-                reason = StopAfterPeerStopped(state);
+                reason = StopAfterPeerStopped(state, cancellationToken);
                 break;
             }
 
@@ -120,7 +135,7 @@ public sealed class ConsumerSession
             {
                 idleSince = now;
             }
-            else if (now - idleSince >= idleTimeoutTicks)
+            else if (idleTimeoutEnabled && now - idleSince >= idleTimeoutTicks)
             {
                 reason = SessionStopReason.Timeout;
                 state.Failure =
@@ -168,6 +183,7 @@ public sealed class ConsumerSession
     public async Task<bool> WaitForPeerAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         long startTimestamp = _timeProvider.GetTimestamp();
+        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(5), _timeProvider);
         while (true)
         {
             RingBufferEndpointState peer = _buffer.ProducerState;
@@ -186,7 +202,7 @@ public sealed class ConsumerSession
                 return false;
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(5), _timeProvider, cancellationToken).ConfigureAwait(false);
+            await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -216,6 +232,7 @@ public sealed class ConsumerSession
                 // Consume the invalid message (the copy path advanced head before
                 // verifying) so the session stops instead of re-reading it.
                 _buffer.AdvanceRead();
+                Interlocked.MemoryBarrier();
                 SignalSpaceIfPeerWaiting();
                 return -1;
             }
@@ -234,6 +251,10 @@ public sealed class ConsumerSession
         }
 
         _buffer.AdvanceRead();
+
+        // Full fence between our release store (head) and the peer's
+        // waiting-flag load: see ProducerSession for the missed-wakeup race.
+        Interlocked.MemoryBarrier();
         SignalSpaceIfPeerWaiting();
 
         state.Expected++;
@@ -285,11 +306,15 @@ public sealed class ConsumerSession
     /// the stop reason. Seeing a terminal producer state has acquire semantics,
     /// so the drain cannot miss messages.
     /// </summary>
-    private SessionStopReason StopAfterPeerStopped(ReadState state)
+    private SessionStopReason StopAfterPeerStopped(ReadState state, CancellationToken cancellationToken)
     {
         int drain;
         while ((drain = ProcessOne(state)) == 1)
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return SessionStopReason.Cancelled;
+            }
         }
 
         if (drain == -1)
@@ -313,9 +338,22 @@ public sealed class ConsumerSession
 
     private void SignalSpaceIfPeerWaiting()
     {
-        if (_options.WaitMode == SessionWaitMode.Notification && _buffer.IsPeerWaiting())
+        if (_options.WaitMode != SessionWaitMode.Notification)
         {
-            _options.Notification!.Space.Signal();
+            return;
+        }
+
+        try
+        {
+            if (_buffer.IsPeerWaiting())
+            {
+                _options.Notification!.Space.Signal();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // The endpoint was disposed concurrently (host shutdown); the
+            // space signal is advisory and the run loop reports the stop.
         }
     }
 
@@ -323,21 +361,33 @@ public sealed class ConsumerSession
     {
         if (_options.WaitMode == SessionWaitMode.Notification)
         {
-            // Declare the wait before the re-check: a producer that publishes
-            // after this point reads the flag and raises the latch.
-            _buffer.SetWaiting(true);
             try
             {
-                if (_buffer.Count > 0)
-                {
-                    return; // data appeared before the wait; retry the read
-                }
+                // Declare the wait before the re-check: a producer that publishes
+                // after this point reads the flag and raises the latch.
+                _buffer.SetWaiting(true);
 
-                _options.Notification!.Data.Wait(SessionWaitTiming.WaitSlice, cancellationToken);
+                // Full fence between our waiting-flag store and the count load so
+                // the flag cannot be delayed past the check on weak memory models.
+                Interlocked.MemoryBarrier();
+                try
+                {
+                    if (_buffer.Count > 0)
+                    {
+                        return; // data appeared before the wait; retry the read
+                    }
+
+                    _options.Notification!.Data.Wait(SessionWaitTiming.WaitSlice, cancellationToken);
+                }
+                finally
+                {
+                    _buffer.SetWaiting(false);
+                }
             }
-            finally
+            catch (ObjectDisposedException)
             {
-                _buffer.SetWaiting(false);
+                // The endpoint was disposed concurrently (host shutdown); the
+                // next loop iteration observes the cancellation.
             }
 
             return;

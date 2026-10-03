@@ -18,7 +18,10 @@ namespace Sparc.Client.Diagnostics;
 /// </remarks>
 public sealed class LatencyHistogram
 {
-    private const int MagnitudeCount = 64;
+    // 40 magnitudes reach ~15 hours at a 10 MHz Stopwatch and ~9 minutes at
+    // 1 GHz; beyond that IndexFor clamps into the last bucket rather than
+    // allocating ~17 magnitudes no message latency can reach.
+    private const int MagnitudeCount = 40;
     private const int SubBucketCount = 16;
 
     private readonly long[] _buckets = new long[MagnitudeCount * SubBucketCount];

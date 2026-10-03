@@ -9,8 +9,8 @@ namespace Sparc.Channels;
 /// <remarks>
 /// Exactly one thread may write to one writer at a time (the endpoint contract).
 /// <see cref="WriteAsync"/> waits for space without blocking a thread; the
-/// publish itself is a bounded-memory, allocation-free copy of the encoded
-/// message.
+/// publish itself is a bounded-memory, allocation-free encode directly into the
+/// reserved slot.
 /// </remarks>
 public sealed class SparcChannelWriter<T> : IDisposable
 {
@@ -19,14 +19,19 @@ public sealed class SparcChannelWriter<T> : IDisposable
 
     private readonly IProducerEndpoint _endpoint;
     private readonly ISparcCodec<T> _codec;
-    private readonly byte[] _scratch;
     private int _disposed;
 
     private SparcChannelWriter(IProducerEndpoint endpoint, ISparcCodec<T> codec)
     {
+        if (endpoint.MaxPayloadSize < codec.MaxSize)
+        {
+            throw new ArgumentException(
+                $"Slot payload of {endpoint.MaxPayloadSize} bytes cannot hold the codec maximum of {codec.MaxSize} bytes.",
+                nameof(codec));
+        }
+
         _endpoint = endpoint;
         _codec = codec;
-        _scratch = new byte[codec.MaxSize];
     }
 
     /// <summary>The underlying role-typed endpoint (for states, leases and diagnostics).</summary>
@@ -70,8 +75,28 @@ public sealed class SparcChannelWriter<T> : IDisposable
     public bool TryWrite(T item)
     {
         ThrowIfDisposed();
-        int length = _codec.Encode(item, _scratch);
-        return _endpoint.TryPublish(DefaultMessageType, _scratch.AsSpan(0, length));
+
+        // Reserve first so the codec encodes straight into the slot: no scratch,
+        // one copy, and a full ring never pays for an encode that is discarded.
+        if (!_endpoint.TryReserveWrite(DefaultMessageType, out Span<byte> payload))
+        {
+            return false;
+        }
+
+        int length;
+        try
+        {
+            length = _codec.Encode(item, payload);
+        }
+        catch
+        {
+            // A throwing codec must not leave the reservation pending.
+            _endpoint.AbandonWrite();
+            throw;
+        }
+
+        _endpoint.CommitWrite(length);
+        return true;
     }
 
     /// <summary>
@@ -98,6 +123,20 @@ public sealed class SparcChannelWriter<T> : IDisposable
     public async ValueTask<bool> WaitToWriteAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+
+        // Fast path: let a draining consumer free a slot across a few yields
+        // before paying the ~1 ms Task.Delay timer, which otherwise dominates
+        // short-lived backpressure.
+        for (int i = 0; i < 32 && _endpoint.Count >= _endpoint.Capacity; i++)
+        {
+            if (_endpoint.ConsumerState is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
+            {
+                return false;
+            }
+
+            await Task.Yield();
+        }
+
         while (_endpoint.Count >= _endpoint.Capacity)
         {
             if (_endpoint.ConsumerState is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)

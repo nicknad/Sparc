@@ -34,13 +34,20 @@ public interface IProducerEndpoint : IEndpoint
     /// <see cref="AbandonWrite"/>, or use <see cref="TryBeginWrite"/> for a
     /// scope-based lease.
     /// </summary>
+    /// <remarks>
+    /// The returned span must reference memory that stays fixed until the
+    /// reservation is committed or abandoned (all built-in endpoints return
+    /// spans over pinned or unmanaged memory); the stream writer keeps a raw
+    /// pointer to it across calls.
+    /// </remarks>
     bool TryReserveWrite(int type, int length, out Span<byte> payload);
 
     /// <summary>
     /// Reserves the next slot with its full payload window, for writers that do
     /// not know the final size up front (for example a chunked stream writer).
     /// Publish with <see cref="CommitWrite(int)"/> or discard with
-    /// <see cref="AbandonWrite"/>.
+    /// <see cref="AbandonWrite"/>. The returned span follows the same
+    /// stability requirement as <see cref="TryReserveWrite(int, int, out Span{byte})"/>.
     /// </summary>
     bool TryReserveWrite(int type, out Span<byte> payload);
 

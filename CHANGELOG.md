@@ -88,6 +88,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RingBufferHeader.Validate` now rejects slot sizes at or below the message
   header (found by the new header fuzz oracle); such a header passed
   validation and failed later during span construction.
+- The notification wait/signal handshake now uses a full fence between the
+  local store and the peer-flag load, closing a missed-wakeup window on weak
+  memory models.
+- Paced sessions poll cancellation every message instead of every 65,536, and
+  `MessagePacer` honors cancellation, so a paced run stops within one message
+  delay; producers also detect a stopped consumer as soon as the ring is full
+  instead of waiting out `FullTimeout`, and no longer pace after the final
+  message.
+- `SfStreamCodec<T>.Write` keeps the serializer's exception when aborting the
+  partial message fails, instead of surfacing the abort failure.
+- `SparcStreamReadBuffer.CopyTo` streams chunk by chunk into destinations
+  larger than the scratch buffer instead of throwing even though the message
+  has the bytes.
+- `SparcChannelWriter<T>` encodes straight into the reserved slot (no scratch
+  buffer, no re-encode on full-ring retries) and abandons the reservation when
+  a codec throws; `JsonCodec<T>` encodes through a pooled buffer with one copy
+  and no per-message `byte[]`.
+- `SparcChannelHealthCheck` treats a required but not-yet-open endpoint as
+  degraded and consumes session results, so verification or timeout failures
+  no longer report healthy.
+- Hosted consumer sessions default to an infinite idle timeout, honor
+  session-level `Takeover`, and stop the host on a structured session failure
+  instead of ending silently; duplicate `AddSparc*Session`/worker registrations
+  no longer register the hosted service twice.
+- The Windows transport retries creation when a raced creator vanished and
+  backs off the establishment poll; the Unix transport no longer treats every
+  `IOException` as "already exists", so ENOSPC/EMFILE surface instead of a
+  timeout. The in-memory factory can no longer race into a region over a null
+  buffer, and `TestSparcRing` unpins its region on dispose.
+- `WaitForPeerAsync` uses a periodic timer instead of allocating a delay per
+  poll, `WindowsSectionSecurity.CurrentUserOnly` is cached, and the latency
+  histogram allocates smaller (all message latencies remain representable).
+
+### Changed
+
+- Negative session timeouts are rejected, and `Timeout.InfiniteTimeSpan`
+  disables `FullTimeout`/`IdleTimeout`. `SparcChannelWriter<T>` fails fast at
+  open when the slot payload cannot hold the codec's `MaxSize`.
 
 ## [1.0.0]
 
