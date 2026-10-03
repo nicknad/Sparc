@@ -66,6 +66,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `SparcStreamWriteBuffer.GetSpan` now rejects a `sizeHint` larger than one
+  chunk's data capacity even when the current chunk is partially filled;
+  previously it returned a shorter span, letting a contract-trusting serializer
+  write into the next slot's framing.
+- `SparcChannelReader` now serializes concurrent `TryRead` calls against the
+  async pump and drains messages committed before the producer stopped, so a
+  timeout that observes `Stopped`/`Faulted` no longer drops the tail of the
+  ring.
+- Session sequence verification now stamps and expects the slot's stream
+  position (`IEndpoint.TailSequence` / `IEndpoint.HeadSequence`) instead of the
+  run-local message index, so producer and consumer restarts and takeovers
+  verify instead of failing on the first message.
+- A custom `ProducerSessionOptions.PayloadWriter` that throws no longer leaves
+  the write reservation pending, which previously made every later
+  `TryReserveWrite` fail with `InvalidOperationException`.
 - `JsonCodec<T>` and `SfCodec<T>` now reject messages larger than the declared
   `MaxSize` even when the caller passes a larger destination span; previously
   the bound was only enforced when the destination happened to be exactly

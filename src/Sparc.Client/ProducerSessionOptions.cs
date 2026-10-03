@@ -18,9 +18,12 @@ public sealed class ProducerSessionOptions
     /// <summary>
     /// When true (default), the session stamps every payload with its
     /// <c>[sequence:int64][timestamp:int64][fill...]</c> protocol, which is what
-    /// the consumer verifies and samples latency from. Set to false to own the
-    /// whole payload through <see cref="PayloadWriter"/>; the consumer must then
-    /// also be configured with <c>IncludeSessionHeader = false</c>.
+    /// the consumer verifies and samples latency from. The sequence is the
+    /// slot's stream position (<see cref="IEndpoint.TailSequence"/>), so
+    /// verification survives producer and consumer restarts and takeovers. Set
+    /// to false to own the whole payload through <see cref="PayloadWriter"/>;
+    /// the consumer must then also be configured with
+    /// <c>IncludeSessionHeader = false</c>.
     /// </summary>
     public bool IncludeSessionHeader { get; set; } = true;
 

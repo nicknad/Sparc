@@ -78,6 +78,17 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
             throw new InvalidOperationException("The message is already complete.");
         }
 
+        // Unconditional, including the mid-chunk case: returning a shorter span
+        // would violate the IWriteBuffer contract (callers may write sizeHint
+        // bytes without re-checking Length) and spill into the next slot's
+        // framing. Unsigned compare also rejects negative hints.
+        if ((uint)sizeHint > (uint)ChunkDataCapacity)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(sizeHint), sizeHint,
+                $"A contiguous span cannot exceed the chunk data capacity of {ChunkDataCapacity} bytes.");
+        }
+
         if (!_hasChunk)
         {
             ReserveChunk();
@@ -86,13 +97,6 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
         int remaining = ChunkDataCapacity - _used;
         if (sizeHint > remaining || (sizeHint == 0 && remaining == 0))
         {
-            if (_used == 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(sizeHint), sizeHint,
-                    $"A contiguous span cannot exceed the chunk data capacity of {ChunkDataCapacity} bytes.");
-            }
-
             CommitChunk(last: false);
             ReserveChunk();
             remaining = ChunkDataCapacity;

@@ -19,8 +19,11 @@ namespace Sparc.Channels;
 /// </para>
 /// <para>
 /// While only <see cref="TryRead"/> is used, no thread is started: it reads the
-/// endpoint directly. Do not mix direct <see cref="Endpoint"/> reads with this
-/// reader; the pump is the single reader once it starts.
+/// endpoint directly. <see cref="TryRead"/> is safe to call concurrently with
+/// itself and with <see cref="ReadAsync"/>/<see cref="ReadAllAsync"/>; the
+/// reader serializes direct reads and hands off to the pump exactly once, so
+/// the endpoint never has two readers. Do not mix direct
+/// <see cref="Endpoint"/> reads with this reader.
 /// </para>
 /// </remarks>
 public sealed class SparcChannelReader<T> : IDisposable
@@ -30,14 +33,19 @@ public sealed class SparcChannelReader<T> : IDisposable
     private readonly IConsumerEndpoint _endpoint;
     private readonly ISparcCodec<T> _codec;
     private readonly Channel<T> _inbox = Channel.CreateUnbounded<T>(
-        new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+        new UnboundedChannelOptions { SingleReader = false, SingleWriter = true });
     private readonly CancellationTokenSource _cancellation = new();
     private readonly TimeSpan _idleTimeout;
+#if NET9_0_OR_GREATER
+    private readonly System.Threading.Lock _directReadGate = new();
+#else
+    private readonly object _directReadGate = new();
+#endif
     private Task? _pump;
     private int _pumpStarted;
     private int _disposed;
 
-    private SparcChannelReader(IConsumerEndpoint endpoint, ISparcCodec<T> codec, TimeSpan idleTimeout)
+    internal SparcChannelReader(IConsumerEndpoint endpoint, ISparcCodec<T> codec, TimeSpan idleTimeout)
     {
         _endpoint = endpoint;
         _codec = codec;
@@ -100,12 +108,23 @@ public sealed class SparcChannelReader<T> : IDisposable
             return _inbox.Reader.TryRead(out item);
         }
 
-        if (_endpoint.TryBeginRead(out ReadLease lease))
+        // The gate serializes concurrent TryRead calls and excludes EnsurePump,
+        // so the endpoint keeps exactly one reader at a time even when callers
+        // race the first async read.
+        lock (_directReadGate)
         {
-            using (lease)
+            if (Volatile.Read(ref _pumpStarted) != 0) // pump started while we waited
             {
-                item = _codec.Decode(lease.Payload);
-                return true;
+                return _inbox.Reader.TryRead(out item);
+            }
+
+            if (_endpoint.TryBeginRead(out ReadLease lease))
+            {
+                using (lease)
+                {
+                    item = _codec.Decode(lease.Payload);
+                    return true;
+                }
             }
         }
 
@@ -161,11 +180,30 @@ public sealed class SparcChannelReader<T> : IDisposable
             return;
         }
 
-        _cancellation.Cancel();
+        try
+        {
+            _cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The pump already completed and disposed the source.
+        }
+
         _endpoint.Dispose();
         _inbox.Writer.TryComplete();
 
-        if (_pump is null || _pump.IsCompleted)
+        if (_pump is { IsCompleted: false })
+        {
+            // The pump may still be observing the token; dispose only once it
+            // has finished so Dispose never overlaps a Cancel.
+            _ = _pump.ContinueWith(
+                static (_, state) => ((CancellationTokenSource)state!).Dispose(),
+                _cancellation,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+        else
         {
             _cancellation.Dispose();
         }
@@ -175,13 +213,23 @@ public sealed class SparcChannelReader<T> : IDisposable
     {
         ThrowIfDisposed();
 
-        if (Interlocked.CompareExchange(ref _pumpStarted, 1, 0) == 0)
+        if (Volatile.Read(ref _pumpStarted) != 0)
         {
-            _pump = Task.Factory.StartNew(
-                PumpLoop,
-                _cancellation.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default);
+            return;
+        }
+
+        // Starting under the gate guarantees no in-flight direct read overlaps
+        // the pump: once _pumpStarted is visible, every reader takes the inbox.
+        lock (_directReadGate)
+        {
+            if (Interlocked.CompareExchange(ref _pumpStarted, 1, 0) == 0)
+            {
+                _pump = Task.Factory.StartNew(
+                    PumpLoop,
+                    _cancellation.Token,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+            }
         }
     }
 
@@ -200,8 +248,19 @@ public sealed class SparcChannelReader<T> : IDisposable
                 {
                     if (_endpoint.ProducerState is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
                     {
+                        // Messages committed before the producer's stop store are
+                        // still in the ring: observing Stopped/Faulted with acquire
+                        // semantics covers every prior publish. Exit without
+                        // draining would drop them.
+                        DrainAfterProducerStop();
                         break;
                     }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Disposal racing the pump: complete cleanly so awaiters do
+                    // not see a spurious channel error.
+                    break;
                 }
             }
         }
@@ -216,6 +275,30 @@ public sealed class SparcChannelReader<T> : IDisposable
         }
 
         _inbox.Writer.TryComplete();
+    }
+
+    private void DrainAfterProducerStop()
+    {
+        while (true)
+        {
+            ReadLease lease;
+            try
+            {
+                if (!_endpoint.TryBeginRead(out lease))
+                {
+                    return;
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                return; // Disposal raced the drain; the inbox is already completed.
+            }
+
+            using (lease)
+            {
+                _inbox.Writer.TryWrite(_codec.Decode(lease.Payload));
+            }
+        }
     }
 
     private void ThrowIfDisposed()

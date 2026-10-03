@@ -9,7 +9,9 @@ namespace Sparc.Client;
 /// <remarks>
 /// The ring buffer itself is payload-agnostic; this type defines the convention
 /// used by the producer/consumer sessions so sequence, ordering and corruption
-/// can be verified end to end.
+/// can be verified end to end. The sequence is the slot's stream position
+/// (<see cref="Sparc.Core.IEndpoint.TailSequence"/>), so verification survives
+/// producer and consumer restarts and takeovers.
 /// </remarks>
 public static class RingBufferMessage
 {

@@ -115,6 +115,20 @@ public class StreamMessageTests
     }
 
     [Fact]
+    public void SpanLargerThanAChunkMidMessageThrows()
+    {
+        using StreamPair pair = new();
+
+        SparcStreamWriteBuffer buffer = pair.Writer.BeginMessage(0);
+        Write(ref buffer, NewMessage(10));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => buffer.GetSpan(ChunkDataCapacity + 1));
+        Assert.Equal(ChunkDataCapacity, buffer.GetSpan(ChunkDataCapacity).Length);
+
+        buffer.Dispose();
+    }
+
+    [Fact]
     public void OversizedDestinationAbandonsTheMessage()
     {
         using StreamPair pair = new();

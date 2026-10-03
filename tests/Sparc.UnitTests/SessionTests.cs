@@ -217,6 +217,94 @@ public class SessionTests
     }
 
     [Fact]
+    public void SessionsVerifyAcrossAConsumerRestart()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+        using SharedRingBuffer producerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64);
+
+        ProducerRunResult produced = new ProducerSession(producerBuffer, new ProducerSessionOptions
+        {
+            Count = 10,
+            PayloadSize = 32,
+            FullTimeout = TimeSpan.FromSeconds(5),
+        }).Run(TestContext.Current.CancellationToken);
+        Assert.Equal(SessionStopReason.Completed, produced.Reason);
+
+        // A first consumer reads four messages and goes away.
+        using (SharedRingBuffer firstConsumer = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64))
+        {
+            Span<byte> destination = stackalloc byte[64];
+            for (int i = 0; i < 4; i++)
+            {
+                Assert.True(firstConsumer.TryRead(destination, out _, out _));
+            }
+        }
+
+        producerBuffer.Dispose();
+
+        // A restarted consumer resumes mid-stream and must verify from the
+        // stream position, not from a run-local zero.
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64);
+        ConsumerRunResult result = new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 0,
+            IdleTimeout = TimeSpan.FromSeconds(5),
+        }).Run(TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.Completed, result.Reason);
+        Assert.Equal(6, result.Received);
+        Assert.Null(result.FailureMessage);
+    }
+
+    [Fact]
+    public void RestartedProducerTakeoverKeepsStreamPositionsAligned()
+    {
+        InMemoryMemoryRegionFactory factory = new();
+        string name = NewName();
+
+        using (SharedRingBuffer producerA = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64))
+        {
+            ProducerRunResult first = new ProducerSession(producerA, new ProducerSessionOptions
+            {
+                Count = 2,
+                PayloadSize = 32,
+                FullTimeout = TimeSpan.FromSeconds(5),
+            }).Run(TestContext.Current.CancellationToken);
+            Assert.Equal(SessionStopReason.Completed, first.Reason);
+        }
+
+        // Consume one message, then restart the producer over the live cursors.
+        using (SharedRingBuffer firstConsumer = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64))
+        {
+            Span<byte> destination = stackalloc byte[64];
+            Assert.True(firstConsumer.TryRead(destination, out _, out _));
+        }
+
+        using (SharedRingBuffer producerB = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64))
+        {
+            ProducerRunResult restarted = new ProducerSession(producerB, new ProducerSessionOptions
+            {
+                Count = 2,
+                PayloadSize = 32,
+                FullTimeout = TimeSpan.FromSeconds(5),
+            }).Run(TestContext.Current.CancellationToken);
+            Assert.Equal(SessionStopReason.Completed, restarted.Reason);
+        }
+
+        using SharedRingBuffer consumerBuffer = SharedRingBuffer.OpenOrCreate(factory, name, 128, 64);
+        ConsumerRunResult result = new ConsumerSession(consumerBuffer, new ConsumerSessionOptions
+        {
+            Count = 0,
+            IdleTimeout = TimeSpan.FromSeconds(5),
+        }).Run(TestContext.Current.CancellationToken);
+
+        Assert.Equal(SessionStopReason.Completed, result.Reason);
+        Assert.Equal(3, result.Received);
+        Assert.Null(result.FailureMessage);
+    }
+
+    [Fact]
     public void ConsumerTimesOutWhenProducerProducesNothing()
     {
         InMemoryMemoryRegionFactory factory = new();

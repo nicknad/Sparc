@@ -57,7 +57,11 @@ public sealed class ConsumerSession
             return Cancelled();
         }
 
-        ReadState state = new();
+        // Seed from the stream position of the next slot to read so verification
+        // matches the producer's stream-position stamps even after a restart or
+        // takeover (head == the sequence of the oldest unread message; this
+        // thread is the only consumer, so it cannot move before the first read).
+        ReadState state = new() { Expected = _buffer.HeadSequence };
         SpinWait spin = new();
         long idleSince = 0;
         long cancellationCounter = 0;

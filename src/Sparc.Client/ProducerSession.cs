@@ -217,12 +217,29 @@ public sealed class ProducerSession
     {
         if (_options.IncludeSessionHeader)
         {
-            RingBufferMessage.Write(slot, index, _timeProvider.GetTimestamp());
+            // Stream position of this slot. The shared tail still equals the
+            // reserved slot's sequence here (only this thread commits, and it
+            // commits after this call), and the consumer seeds its expectation
+            // from HeadSequence — so verification holds across producer and
+            // consumer restarts and takeovers, where run-local indices always
+            // mismatched.
+            RingBufferMessage.Write(slot, _buffer.TailSequence, _timeProvider.GetTimestamp());
         }
 
         if (_options.PayloadWriter is { } writer)
         {
-            writer(index, slot);
+            try
+            {
+                writer(index, slot);
+            }
+            catch
+            {
+                // Keep the endpoint usable: a throwing writer must not leave the
+                // reservation pending, or every later TryReserveWrite would fail.
+                _buffer.AbandonWrite();
+                throw;
+            }
+
             return;
         }
 
