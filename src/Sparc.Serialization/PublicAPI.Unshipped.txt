@@ -47,3 +47,7 @@ Sparc.Serialization.SparcStreamWriter.Name.get -> string!
 Sparc.Serialization.SparcStreamWriter.SparcStreamWriter(Sparc.Core.IProducerEndpoint! endpoint) -> void
 static Sparc.Serialization.SparcStreamReader.Open(Sparc.IIpcMemoryRegionFactory! factory, string! name, int capacity = 1024, int slotSize = 256, Sparc.Core.SharedRingBufferOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Sparc.Serialization.SparcStreamReader!
 static Sparc.Serialization.SparcStreamWriter.Open(Sparc.IIpcMemoryRegionFactory! factory, string! name, int capacity = 1024, int slotSize = 256, Sparc.Core.SharedRingBufferOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Sparc.Serialization.SparcStreamWriter!
+virtual Sparc.Serialization.SfDeserializer<T>.Invoke(ref SerializerFoundation.CompatibleReadOnlySpanReadBuffer buffer) -> T
+virtual Sparc.Serialization.SfSerializer<T>.Invoke(ref SerializerFoundation.CompatibleSpanWriteBuffer buffer, T value) -> void
+virtual Sparc.Serialization.SfStreamDeserializer<T>.Invoke(ref Sparc.Serialization.SparcStreamReadBuffer buffer) -> T
+virtual Sparc.Serialization.SfStreamSerializer<T>.Invoke(ref Sparc.Serialization.SparcStreamWriteBuffer buffer, T value) -> void

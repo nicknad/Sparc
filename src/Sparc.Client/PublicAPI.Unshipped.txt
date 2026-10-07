@@ -1,4 +1,8 @@
 #nullable enable
+Sparc.Client.ConsumerProgress.Deconstruct(out long Received, out long ReceivedBytes, out System.TimeSpan Elapsed) -> void
+Sparc.Client.ConsumerProgress.Equals(Sparc.Client.ConsumerProgress other) -> bool
+Sparc.Client.ConsumerRunResult.Deconstruct(out long Received, out long ReceivedBytes, out System.TimeSpan Elapsed, out Sparc.Client.SessionStopReason Reason, out Sparc.Client.Diagnostics.LatencyHistogram! Latency, out string? FailureMessage) -> void
+Sparc.Client.ConsumerRunResult.Equals(Sparc.Client.ConsumerRunResult other) -> bool
 Sparc.Client.ConsumerSummary
 Sparc.Client.ConsumerSummary.Capacity.get -> int
 Sparc.Client.ConsumerSummary.ConsumerState.get -> string!
@@ -25,6 +29,10 @@ Sparc.Client.LatencySummary.P90Us.get -> double
 Sparc.Client.LatencySummary.P95Us.get -> double
 Sparc.Client.LatencySummary.P999Us.get -> double
 Sparc.Client.LatencySummary.P99Us.get -> double
+Sparc.Client.ProducerProgress.Deconstruct(out long Produced, out System.TimeSpan Elapsed) -> void
+Sparc.Client.ProducerProgress.Equals(Sparc.Client.ProducerProgress other) -> bool
+Sparc.Client.ProducerRunResult.Deconstruct(out long Produced, out int PayloadSize, out System.TimeSpan Elapsed, out Sparc.Client.SessionStopReason Reason, out long Unsent, out Sparc.Core.RingBufferEndpointState PeerState, out string? FailureMessage) -> void
+Sparc.Client.ProducerRunResult.Equals(Sparc.Client.ProducerRunResult other) -> bool
 Sparc.Client.ProducerSummary
 Sparc.Client.ProducerSummary.ActiveElapsedS.get -> double
 Sparc.Client.ProducerSummary.Capacity.get -> int
@@ -39,8 +47,29 @@ Sparc.Client.ProducerSummary.Reason.get -> Sparc.Client.SessionStopReason
 Sparc.Client.ProducerSummary.SlotSize.get -> int
 Sparc.Client.ProducerSummary.ThroughputMsgS.get -> double
 Sparc.Client.SessionSummaries
+override Sparc.Client.ConsumerProgress.GetHashCode() -> int
+override Sparc.Client.ConsumerRunResult.GetHashCode() -> int
+override Sparc.Client.ProducerProgress.GetHashCode() -> int
+override Sparc.Client.ProducerRunResult.GetHashCode() -> int
+static Sparc.Client.ConsumerProgress.operator !=(Sparc.Client.ConsumerProgress left, Sparc.Client.ConsumerProgress right) -> bool
+static Sparc.Client.ConsumerProgress.operator ==(Sparc.Client.ConsumerProgress left, Sparc.Client.ConsumerProgress right) -> bool
+static Sparc.Client.ConsumerRunResult.operator !=(Sparc.Client.ConsumerRunResult left, Sparc.Client.ConsumerRunResult right) -> bool
+static Sparc.Client.ConsumerRunResult.operator ==(Sparc.Client.ConsumerRunResult left, Sparc.Client.ConsumerRunResult right) -> bool
+static Sparc.Client.ProducerProgress.operator !=(Sparc.Client.ProducerProgress left, Sparc.Client.ProducerProgress right) -> bool
+static Sparc.Client.ProducerProgress.operator ==(Sparc.Client.ProducerProgress left, Sparc.Client.ProducerProgress right) -> bool
+static Sparc.Client.ProducerRunResult.operator !=(Sparc.Client.ProducerRunResult left, Sparc.Client.ProducerRunResult right) -> bool
+static Sparc.Client.ProducerRunResult.operator ==(Sparc.Client.ProducerRunResult left, Sparc.Client.ProducerRunResult right) -> bool
 static Sparc.Client.SessionSummaries.AdviceJson(Sparc.Core.RingBufferAdvice! advice) -> string!
 static Sparc.Client.SessionSummaries.ConsumerJson(string! name, int capacity, int slotSize, Sparc.Client.ConsumerRunResult result, double timestampFrequency, string! producerState, string! consumerState) -> string!
 static Sparc.Client.SessionSummaries.ProducerJson(string! name, int capacity, int slotSize, int maxPayload, Sparc.Client.ProducerRunResult result) -> string!
 static Sparc.Client.SessionSummaries.TryParseConsumer(string! text, out Sparc.Client.ConsumerSummary? summary) -> bool
 static Sparc.Client.SessionSummaries.TryParseProducer(string! text, out Sparc.Client.ProducerSummary? summary) -> bool
+virtual Sparc.Client.SessionPayloadWriter.Invoke(long index, System.Span<byte> payload) -> void
+~override Sparc.Client.ConsumerProgress.Equals(object obj) -> bool
+~override Sparc.Client.ConsumerProgress.ToString() -> string
+~override Sparc.Client.ConsumerRunResult.Equals(object obj) -> bool
+~override Sparc.Client.ConsumerRunResult.ToString() -> string
+~override Sparc.Client.ProducerProgress.Equals(object obj) -> bool
+~override Sparc.Client.ProducerProgress.ToString() -> string
+~override Sparc.Client.ProducerRunResult.Equals(object obj) -> bool
+~override Sparc.Client.ProducerRunResult.ToString() -> string
