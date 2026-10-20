@@ -232,8 +232,12 @@ public sealed class ConsumerSession
                 // Consume the invalid message (the copy path advanced head before
                 // verifying) so the session stops instead of re-reading it.
                 _buffer.AdvanceRead();
-                Interlocked.MemoryBarrier();
-                SignalSpaceIfPeerWaiting();
+                if (_options.WaitMode == SessionWaitMode.Notification)
+                {
+                    Interlocked.MemoryBarrier();
+                    SignalSpaceIfPeerWaiting();
+                }
+
                 return -1;
             }
         }
@@ -254,8 +258,12 @@ public sealed class ConsumerSession
 
         // Full fence between our release store (head) and the peer's
         // waiting-flag load: see ProducerSession for the missed-wakeup race.
-        Interlocked.MemoryBarrier();
-        SignalSpaceIfPeerWaiting();
+        // Spin modes never set the flag, so they skip the fence entirely.
+        if (_options.WaitMode == SessionWaitMode.Notification)
+        {
+            Interlocked.MemoryBarrier();
+            SignalSpaceIfPeerWaiting();
+        }
 
         state.Expected++;
         state.Received++;

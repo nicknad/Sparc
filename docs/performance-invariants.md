@@ -92,7 +92,9 @@ mirrored pair on `head` (`SharedRingBuffer.TryReserveWrite/TryPeek/CommitWrite/A
 **Buys.** No fences or locked instructions per byte. The payload bytes travel
 on the same coherence transaction as the cursor store; ordering costs one
 release store per message and one acquire load per message (often elided by the
-cached cursor, B2/C1).
+cached cursor, B2/C1). The full StoreLoad fence needed to pair a cursor release
+with the peer's waiting flag is issued only in `SessionWaitMode.Notification`;
+spin/sleep modes no longer pay it (a fence measured ~7.3 ns on the test host).
 
 ### B2. `Volatile` is required even on x86-64
 
@@ -153,6 +155,9 @@ pending/lease state and on the "own" cursor.
 
 **Mechanism.** `_cachedHead`/`_cachedTail`; the shared value is re-read only
 when the stale copy says the buffer is full (producer) or empty (consumer).
+Each cache is padded onto its own cache line (`PaddedLong`), and
+`SpscRingBuffer` groups the producer's lease reservation and the consumer's peek
+state into separate padded structs so the two sides never bounce a private line.
 
 **Buys.** Avoids fetching a line the peer writes on every message. The project
 README reports **1.3M -> 13M messages/s** from this optimization on the test
@@ -271,6 +276,13 @@ allocates a destination at all.
 
 **Measured.** Cross-process 4 KB: **2.0M msg/s / 7.8 GiB/s** with the lease vs
 1.16M / 4.5 GiB/s with copies.
+
+`SpscRingBuffer` also keeps the producer's lease reservation and the consumer's
+peek state on separate cache lines (the two groups are written by different
+threads every message). An interleaved same-process A/B at 64 B measured a
+**3.2x median message-rate gain** (new faster in 15/15 rounds, 1.3x worst case).
+Padding the cached peer cursors as well was neutral within this host's noise;
+it is kept as a structural no-false-sharing change, not as a measured win.
 
 ### D4. Support structures are preallocated and allocation-free per operation
 

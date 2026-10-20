@@ -63,19 +63,17 @@ public sealed class SpscRingBuffer : IRingBuffer
     // coherence transfer every time it was written, so each side only refreshes
     // its cache when the stale copy says "full" (producer) or "empty" (consumer).
     // The cached value can only ever be older, never newer, than the peer's real
-    // cursor, so the worst case is a redundant refresh.
-    private long _cachedHead; // producer-private
-    private long _cachedTail; // consumer-private
+    // cursor, so the worst case is a redundant refresh. Padded because the
+    // producer writes its cache and the consumer writes the other.
+    private PaddedLong _cachedHead; // producer-private
+    private PaddedLong _cachedTail; // consumer-private
 
     // State for the zero-copy lease API. The producer and consumer contracts are
-    // single-threaded, so per-instance pending state is safe.
-    private long _pendingTail;
-    private int _pendingOffset;
-    private int _pendingLength;
-    private int _pendingType;
-    private bool _hasPendingWrite;
-    private long _peekedHead;
-    private bool _hasPeekedRead;
+    // single-threaded, so per-instance pending state is safe. Each side's state
+    // gets its own cache line so reserve/commit does not bounce the line that
+    // peek/advance is writing.
+    private PendingWriteState _pending; // producer-private
+    private PeekedReadState _peeked; // consumer-private
 
     /// <summary>Creates a buffer with the project defaults (1024 slots × 256 bytes).</summary>
     public SpscRingBuffer()
@@ -175,7 +173,7 @@ public sealed class SpscRingBuffer : IRingBuffer
     /// <inheritdoc />
     public bool TryReserveWrite(int type, int length, out Span<byte> payload)
     {
-        if (_hasPendingWrite)
+        if (_pending.Has)
         {
             throw new InvalidOperationException("A write reservation is already active.");
         }
@@ -193,11 +191,11 @@ public sealed class SpscRingBuffer : IRingBuffer
             return false; // full
         }
 
-        _pendingOffset = offset;
-        _pendingTail = tail;
-        _pendingLength = length;
-        _pendingType = type;
-        _hasPendingWrite = true;
+        _pending.Offset = offset;
+        _pending.Tail = tail;
+        _pending.Length = length;
+        _pending.Type = type;
+        _pending.Has = true;
         payload = _buffer.AsSpan(offset + RingBufferLayout.MessageHeaderSize, length);
         return true;
     }
@@ -205,38 +203,38 @@ public sealed class SpscRingBuffer : IRingBuffer
     /// <inheritdoc />
     public void CommitWrite()
     {
-        if (!_hasPendingWrite)
+        if (!_pending.Has)
         {
             throw new InvalidOperationException("No write reservation is active.");
         }
 
-        _hasPendingWrite = false;
-        Debug.Assert((long)_pendingOffset + SlotSize <= _buffer.Length);
-        Span<byte> slot = _buffer.AsSpan(_pendingOffset, SlotSize);
-        BinaryPrimitives.WriteInt32LittleEndian(slot, _pendingLength);
-        BinaryPrimitives.WriteInt32LittleEndian(slot[sizeof(int)..], _pendingType);
+        _pending.Has = false;
+        Debug.Assert((long)_pending.Offset + SlotSize <= _buffer.Length);
+        Span<byte> slot = _buffer.AsSpan(_pending.Offset, SlotSize);
+        BinaryPrimitives.WriteInt32LittleEndian(slot, _pending.Length);
+        BinaryPrimitives.WriteInt32LittleEndian(slot[sizeof(int)..], _pending.Type);
 
         // Release: the caller's payload writes and the framing above must be
         // visible before the consumer can observe the advanced tail.
-        Volatile.Write(ref _tail.Value, _pendingTail + 1);
+        Volatile.Write(ref _tail.Value, _pending.Tail + 1);
     }
 
     /// <inheritdoc />
     public void AbandonWrite()
     {
-        if (!_hasPendingWrite)
+        if (!_pending.Has)
         {
             throw new InvalidOperationException("No write reservation is active.");
         }
 
-        Debug.Assert((long)_pendingOffset + SlotSize <= _buffer.Length);
-        _hasPendingWrite = false;
+        Debug.Assert((long)_pending.Offset + SlotSize <= _buffer.Length);
+        _pending.Has = false;
     }
 
     /// <inheritdoc />
     public bool TryPeek(out ReadOnlySpan<byte> payload, out int length, out int type)
     {
-        if (_hasPeekedRead)
+        if (_peeked.Has)
         {
             throw new InvalidOperationException("A read view is already active.");
         }
@@ -254,24 +252,24 @@ public sealed class SpscRingBuffer : IRingBuffer
         length = SlotFraming.ReadHeader(slot, out type);
         Debug.Assert(length <= MaxPayloadSize);
         payload = slot.Slice(RingBufferLayout.MessageHeaderSize, length);
-        _peekedHead = head;
-        _hasPeekedRead = true;
+        _peeked.Head = head;
+        _peeked.Has = true;
         return true;
     }
 
     /// <inheritdoc />
     public void AdvanceRead()
     {
-        if (!_hasPeekedRead)
+        if (!_peeked.Has)
         {
             throw new InvalidOperationException("No read view is active.");
         }
 
-        _hasPeekedRead = false;
+        _peeked.Has = false;
 
         // Release: publishes "slot consumed" to the producer once the caller is
         // done with the view.
-        Volatile.Write(ref _head.Value, _peekedHead + 1);
+        Volatile.Write(ref _head.Value, _peeked.Head + 1);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -282,11 +280,11 @@ public sealed class SpscRingBuffer : IRingBuffer
 
         // Acquire (only when the cached peer cursor claims the buffer is full):
         // never overwrite the slot the consumer is currently reading.
-        long head = _cachedHead;
+        long head = _cachedHead.Value;
         if (tail - head >= Capacity)
         {
             head = Volatile.Read(ref _head.Value);
-            _cachedHead = head;
+            _cachedHead.Value = head;
             if (tail - head >= Capacity)
             {
                 offset = 0;
@@ -298,7 +296,7 @@ public sealed class SpscRingBuffer : IRingBuffer
         // ahead of the real one, and the target slot is inside the array.
         Debug.Assert(tail >= head);
         Debug.Assert(tail - head < Capacity);
-        Debug.Assert(_cachedHead <= Volatile.Read(ref _head.Value));
+        Debug.Assert(_cachedHead.Value <= Volatile.Read(ref _head.Value));
         Debug.Assert((uint)(tail & _mask) < (uint)Capacity);
         offset = (int)(tail & _mask) * SlotSize;
         return true;
@@ -312,11 +310,11 @@ public sealed class SpscRingBuffer : IRingBuffer
 
         // Acquire (only when the cached peer cursor claims the buffer is empty):
         // observe the producer's release of the slot contents.
-        long tail = _cachedTail;
+        long tail = _cachedTail.Value;
         if (tail == head)
         {
             tail = Volatile.Read(ref _tail.Value);
-            _cachedTail = tail;
+            _cachedTail.Value = tail;
             if (tail == head)
             {
                 offset = 0;
@@ -327,7 +325,7 @@ public sealed class SpscRingBuffer : IRingBuffer
         // Invariants: data is available, the cached peer cursor is never ahead
         // of the real one, and the source slot is inside the array.
         Debug.Assert(tail > head);
-        Debug.Assert(_cachedTail <= Volatile.Read(ref _tail.Value));
+        Debug.Assert(_cachedTail.Value <= Volatile.Read(ref _tail.Value));
         Debug.Assert((uint)(head & _mask) < (uint)Capacity);
         offset = (int)(head & _mask) * SlotSize;
         return true;
@@ -368,10 +366,10 @@ public sealed class SpscRingBuffer : IRingBuffer
     {
         Volatile.Write(ref _head.Value, 0);
         Volatile.Write(ref _tail.Value, 0);
-        _cachedHead = 0;
-        _cachedTail = 0;
-        _hasPendingWrite = false;
-        _hasPeekedRead = false;
+        _cachedHead.Value = 0;
+        _cachedTail.Value = 0;
+        _pending.Has = false;
+        _peeked.Has = false;
     }
 
     /// <summary>
@@ -384,5 +382,36 @@ public sealed class SpscRingBuffer : IRingBuffer
     {
         [FieldOffset(0)]
         public long Value;
+    }
+
+    // Lease state is written by only one side, but the producer's and consumer's
+    // groups would otherwise share a cache line and bounce on every message.
+    [StructLayout(LayoutKind.Explicit, Size = RingBufferLayout.CacheLineSize * 2)]
+    private struct PendingWriteState
+    {
+        [FieldOffset(0)]
+        public long Tail;
+
+        [FieldOffset(8)]
+        public int Offset;
+
+        [FieldOffset(12)]
+        public int Length;
+
+        [FieldOffset(16)]
+        public int Type;
+
+        [FieldOffset(20)]
+        public bool Has;
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = RingBufferLayout.CacheLineSize * 2)]
+    private struct PeekedReadState
+    {
+        [FieldOffset(0)]
+        public long Head;
+
+        [FieldOffset(8)]
+        public bool Has;
     }
 }

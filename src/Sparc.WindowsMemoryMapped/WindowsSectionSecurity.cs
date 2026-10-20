@@ -141,7 +141,8 @@ public sealed class WindowsSectionSecurity : IpcMemoryRegionSecurity
     private static SecurityIdentifier GetCurrentUserSid()
     {
 #pragma warning disable CA1416 // Windows-only API; this class lives in the Windows transport package.
-        SecurityIdentifier? sid = WindowsIdentity.GetCurrent().User;
+        using WindowsIdentity identity = WindowsIdentity.GetCurrent();
+        SecurityIdentifier? sid = identity.User;
 #pragma warning restore CA1416
         return sid ?? throw new InvalidOperationException("The current Windows token has no user SID.");
     }

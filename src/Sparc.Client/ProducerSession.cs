@@ -87,12 +87,16 @@ public sealed class ProducerSession
                 WritePayload(slot, produced);
                 _buffer.CommitWrite();
 
-                // Full fence between our release store (tail) and the peer's
-                // waiting-flag load: without it a StoreLoad reorder on weak
-                // memory models lets both sides miss each other and the consumer
-                // sleeps a full wait slice.
-                Interlocked.MemoryBarrier();
-                SignalDataIfPeerWaiting();
+                // Notification mode needs a full fence between our release store
+                // (tail) and the peer's waiting-flag load: without it a StoreLoad
+                // reorder on weak memory models lets both sides miss each other
+                // and the consumer sleeps a full wait slice. Spin modes never set
+                // the flag, so they can skip the fence entirely.
+                if (_options.WaitMode == SessionWaitMode.Notification)
+                {
+                    Interlocked.MemoryBarrier();
+                    SignalDataIfPeerWaiting();
+                }
 
                 if (firstPublishTimestamp == 0)
                 {

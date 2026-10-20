@@ -126,6 +126,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Negative session timeouts are rejected, and `Timeout.InfiniteTimeSpan`
   disables `FullTimeout`/`IdleTimeout`. `SparcChannelWriter<T>` fails fast at
   open when the slot payload cannot hold the codec's `MaxSize`.
+- Session hot paths only issue the notification `MemoryBarrier` and waiting-flag
+  check in `SessionWaitMode.Notification`; spin/sleep modes no longer pay a full
+  fence per message (a fence measured ~7.3 ns on the test host). `SpscRingBuffer`
+  pads its cached peer cursors and gives the producer/consumer lease state
+  separate cache lines. The lease separation measured a 3.2x median message-rate
+  gain in an interleaved same-process 64 B A/B (15/15 rounds); the cached-cursor
+  padding was neutral within host noise.
 
 ## [1.0.0]
 
