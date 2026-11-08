@@ -21,7 +21,7 @@ internal sealed class CaptureToRingWorker(
     private long _tooLarge;
 
     public string RingName { get; } =
-        configuration.GetValue("Sparc:RingName", YarpCaptureProtocol.RingName) ?? YarpCaptureProtocol.RingName;
+        configuration.GetValue("Sparc:RingName", YarpCaptureProtocol.RingName);
 
     /// <summary>Captures successfully written to the ring.</summary>
     public long Written => Interlocked.Read(ref _written);

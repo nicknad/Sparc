@@ -12,9 +12,6 @@ namespace Sparc.Client;
 /// </summary>
 public sealed class ProducerSession
 {
-    private const int ProgressReports = 10;
-    private const long CancellationCheckMask = 0xFFFF;
-
     private readonly IProducerEndpoint _buffer;
     private readonly ProducerSessionOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -68,7 +65,7 @@ public sealed class ProducerSession
         long fullTimeoutTicks = (long)(_options.FullTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
         bool fullTimeoutEnabled = _options.FullTimeout != Timeout.InfiniteTimeSpan;
         long pacingTicks = MessagePacer.TicksFor(_timeProvider, _options.PerMessageDelay);
-        long progressInterval = _options.Count > 0 ? Math.Max(1, _options.Count / ProgressReports) : 0;
+        long progressInterval = SessionRuntime.ProgressInterval(_options.Count);
         SpinWait spin = new();
         long produced = 0;
         long fullSince = 0;
@@ -95,7 +92,8 @@ public sealed class ProducerSession
                 if (_options.WaitMode == SessionWaitMode.Notification)
                 {
                     Interlocked.MemoryBarrier();
-                    SignalDataIfPeerWaiting();
+                    SessionRuntime.SignalIfPeerWaiting(
+                        _buffer, _options.WaitMode, _options.Notification, signalData: true);
                 }
 
                 if (firstPublishTimestamp == 0)
@@ -121,7 +119,7 @@ public sealed class ProducerSession
                 // Paced runs can spend minutes between mask boundaries, so poll
                 // every message once pacing is on; unpaced runs keep the batched
                 // fast-path check.
-                if ((pacingTicks > 0 || (++cancellationCounter & CancellationCheckMask) == 0)
+                if (SessionRuntime.ShouldCheckCancellation(ref cancellationCounter, pacingTicks)
                     && cancellationToken.IsCancellationRequested)
                 {
                     reason = SessionStopReason.Cancelled;
@@ -168,7 +166,13 @@ public sealed class ProducerSession
                 }
             }
 
-            WaitWhileFull(ref spin, cancellationToken);
+            SessionRuntime.WaitForNotification(
+                _buffer,
+                _options.WaitMode,
+                _options.Notification,
+                waitOnDataSignal: false,
+                ref spin,
+                cancellationToken);
         }
 
         long endTimestamp = _timeProvider.GetTimestamp();
@@ -200,42 +204,19 @@ public sealed class ProducerSession
     public Task<ProducerRunResult> RunAsync(
         CancellationToken cancellationToken = default,
         IProgress<ProducerProgress>? progress = null) =>
-        Task.Factory.StartNew(
-            () => Run(cancellationToken, progress),
-            CancellationToken.None,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default);
+        SessionRuntime.RunOnDedicatedThread(() => Run(cancellationToken, progress));
 
     /// <summary>
     /// Waits until the consumer claims its role (<see cref="RingBufferEndpointState.Running"/>)
     /// or <paramref name="timeout"/> elapses. Returns false when the consumer did
     /// not appear or has already stopped.
     /// </summary>
-    public async Task<bool> WaitForPeerAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
-    {
-        long startTimestamp = _timeProvider.GetTimestamp();
-        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(5), _timeProvider);
-        while (true)
-        {
-            RingBufferEndpointState peer = _buffer.ConsumerState;
-            if (peer is RingBufferEndpointState.Running)
-            {
-                return true;
-            }
-
-            if (peer is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
-            {
-                return false;
-            }
-
-            if (_timeProvider.GetElapsedTime(startTimestamp) >= timeout)
-            {
-                return false;
-            }
-
-            await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false);
-        }
-    }
+    public Task<bool> WaitForPeerAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+        SessionRuntime.WaitForPeerAsync(
+            () => _buffer.ConsumerState,
+            _timeProvider,
+            timeout,
+            cancellationToken);
 
     /// <summary>
     /// Writes one payload. The default path stamps the session protocol; a
@@ -279,74 +260,6 @@ public sealed class ProducerSession
         else
         {
             slot.Clear();
-        }
-    }
-
-    private void SignalDataIfPeerWaiting()
-    {
-        if (_options.WaitMode != SessionWaitMode.Notification)
-        {
-            return;
-        }
-
-        try
-        {
-            if (_buffer.IsPeerWaiting())
-            {
-                _options.Notification!.Data.Signal();
-            }
-        }
-        catch (ObjectDisposedException)
-        {
-            // The endpoint was disposed concurrently (host shutdown); the
-            // data signal is advisory and the run loop reports the stop.
-        }
-    }
-
-    private void WaitWhileFull(ref SpinWait spin, CancellationToken cancellationToken)
-    {
-        if (_options.WaitMode == SessionWaitMode.Notification)
-        {
-            try
-            {
-                // Declare the wait before the re-check: if the consumer frees a slot
-                // after this point it reads the flag and raises the latch, so the
-                // wait below cannot miss it.
-                _buffer.SetWaiting(true);
-
-                // Full fence between our waiting-flag store and the count load so
-                // the flag cannot be delayed past the check on weak memory models.
-                Interlocked.MemoryBarrier();
-                try
-                {
-                    if (_buffer.Count < _buffer.Capacity)
-                    {
-                        return; // space appeared before the wait; retry the publish
-                    }
-
-                    _options.Notification!.Space.Wait(SessionWaitTiming.WaitSlice, cancellationToken);
-                }
-                finally
-                {
-                    _buffer.SetWaiting(false);
-                }
-            }
-            catch (ObjectDisposedException)
-            {
-                // The endpoint was disposed concurrently (host shutdown); the
-                // next loop iteration observes the cancellation.
-            }
-
-            return;
-        }
-
-        if (_options.WaitMode == SessionWaitMode.SpinOnly)
-        {
-            Thread.SpinWait(64);
-        }
-        else
-        {
-            spin.SpinOnce();
         }
     }
 }

@@ -39,8 +39,14 @@ public class TestingPackageTests
         await Task.Run(
             () =>
             {
+                long deadline = Environment.TickCount64 + 10_000;
                 while (ring.Producer.Count < 4)
                 {
+                    if (Environment.TickCount64 >= deadline)
+                    {
+                        throw new TimeoutException("Producer did not fill the ring within 10 seconds.");
+                    }
+
                     Thread.Sleep(1);
                 }
             },

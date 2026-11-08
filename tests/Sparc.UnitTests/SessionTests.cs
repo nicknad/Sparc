@@ -69,7 +69,7 @@ public class SessionTests
         Assert.Equal(4, result.Produced);
         Assert.Equal(96, result.Unsent);
         Assert.Equal(RingBufferEndpointState.NotPresent, result.PeerState);
-        Assert.NotNull(result.FailureMessage);
+        Assert.Contains("stayed full", result.FailureMessage, StringComparison.Ordinal);
     }
 
     [Fact]

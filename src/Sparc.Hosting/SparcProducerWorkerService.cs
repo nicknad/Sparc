@@ -41,45 +41,29 @@ public sealed class SparcProducerWorkerService<TWorker> : BackgroundService
     public Task Completion => _completion.Task;
 
     /// <inheritdoc />
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        IProducerEndpoint? endpoint = null;
-        try
-        {
-            endpoint = await Task.Run(
-                () => SparcRing.OpenProducer(
-                    _factory,
-                    _channel.Name,
-                    _channel.Capacity,
-                    _channel.SlotSize,
-                    _channel.ToRingOptions(_timeProvider),
-                    stoppingToken),
-                stoppingToken).ConfigureAwait(false);
-
-            _status.AttachProducer(endpoint);
-            _logger.LogInformation(
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        SparcHostedServiceRunner.ExecuteAsync(
+            _status,
+            _channel.Name,
+            _logger,
+            _completion,
+            token => SparcRing.OpenProducer(
+                _factory,
+                _channel.Name,
+                _channel.Capacity,
+                _channel.SlotSize,
+                _channel.ToRingOptions(_timeProvider),
+                token),
+            _status.AttachProducer,
+            _ => _logger.LogInformation(
                 "SPARC producer worker ready: name={Name} worker={Worker}",
-                _channel.Name, typeof(TWorker).Name);
-
-            await _worker.RunAsync(endpoint, stoppingToken).ConfigureAwait(false);
-            _logger.LogInformation("SPARC producer worker finished: worker={Worker}", typeof(TWorker).Name);
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Host shutdown.
-        }
-        catch (Exception exception)
-        {
-            _status.Fail(exception.Message);
-            SparcMetrics.RecordFailure(_channel.Name);
-            _logger.LogError(exception, "SPARC producer worker failed: {Message}", exception.Message);
-            throw;
-        }
-        finally
-        {
-            _status.DetachProducer();
-            endpoint?.Dispose();
-            _completion.TrySetResult();
-        }
-    }
+                _channel.Name, typeof(TWorker).Name),
+            _status.DetachProducer,
+            async (endpoint, token) =>
+            {
+                await _worker.RunAsync(endpoint, token).ConfigureAwait(false);
+                _logger.LogInformation("SPARC producer worker finished: worker={Worker}", typeof(TWorker).Name);
+            },
+            "SPARC producer worker failed: {Message}",
+            stoppingToken);
 }

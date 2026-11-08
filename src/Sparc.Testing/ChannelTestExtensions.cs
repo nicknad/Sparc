@@ -16,17 +16,11 @@ public static class ChannelTestExtensions
     {
         ArgumentNullException.ThrowIfNull(reader);
 
-        using CancellationTokenSource timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-        try
-        {
-            return await reader.ReadAsync(timeoutSource.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new TimeoutException(
-                $"No message arrived on channel '{reader.Name}' within {timeout.TotalMilliseconds:F0} ms.", exception);
-        }
+        return await WithTimeout(
+            token => reader.ReadAsync(token),
+            timeout,
+            cancellationToken,
+            $"No message arrived on channel '{reader.Name}' within {timeout.TotalMilliseconds:F0} ms.").ConfigureAwait(false);
     }
 
     /// <summary>
@@ -41,17 +35,15 @@ public static class ChannelTestExtensions
     {
         ArgumentNullException.ThrowIfNull(writer);
 
-        using CancellationTokenSource timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-        try
-        {
-            await writer.WriteAsync(item, timeoutSource.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new TimeoutException(
-                $"Channel '{writer.Name}' stayed full for {timeout.TotalMilliseconds:F0} ms.", exception);
-        }
+        await WithTimeout<bool>(
+            async token =>
+            {
+                await writer.WriteAsync(item, token).ConfigureAwait(false);
+                return true;
+            },
+            timeout,
+            cancellationToken,
+            $"Channel '{writer.Name}' stayed full for {timeout.TotalMilliseconds:F0} ms.").ConfigureAwait(false);
     }
 
     /// <summary>Waits for a message and throws <see cref="TimeoutException"/> when none arrives.</summary>
@@ -62,16 +54,28 @@ public static class ChannelTestExtensions
     {
         ArgumentNullException.ThrowIfNull(reader);
 
+        return await WithTimeout(
+            token => reader.WaitToReadAsync(token),
+            timeout,
+            cancellationToken,
+            $"Channel '{reader.Name}' produced nothing within {timeout.TotalMilliseconds:F0} ms.").ConfigureAwait(false);
+    }
+
+    private static async Task<T> WithTimeout<T>(
+        Func<CancellationToken, ValueTask<T>> operation,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        string timeoutMessage)
+    {
         using CancellationTokenSource timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutSource.CancelAfter(timeout);
         try
         {
-            return await reader.WaitToReadAsync(timeoutSource.Token).ConfigureAwait(false);
+            return await operation(timeoutSource.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException(
-                $"Channel '{reader.Name}' produced nothing within {timeout.TotalMilliseconds:F0} ms.", exception);
+            throw new TimeoutException(timeoutMessage, exception);
         }
     }
 }

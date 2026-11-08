@@ -51,7 +51,7 @@ public class WindowsSectionSecurityTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
 #pragma warning disable CA1416 // Windows-only API; the test is guarded by Supported.
@@ -77,7 +77,7 @@ public class WindowsSectionSecurityTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         Assert.Throws<ArgumentException>(() => WindowsSectionSecurity.ForSids());
@@ -88,7 +88,7 @@ public class WindowsSectionSecurityTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
 #pragma warning disable CA1416 // Windows-only API; the test is guarded by Supported.
@@ -108,7 +108,7 @@ public class WindowsSectionSecurityTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         Assert.Throws<ArgumentException>(() => WindowsSectionSecurity.FromSddl("not an sddl"));
@@ -119,7 +119,7 @@ public class WindowsSectionSecurityTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         // Owner/group only: a null DACL would grant everyone full access.
@@ -131,7 +131,7 @@ public class WindowsSectionSecurityTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         Assert.Throws<ArgumentException>(() =>
@@ -143,7 +143,7 @@ public class WindowsSectionSecurityTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         string name = NewName();
@@ -170,7 +170,7 @@ public class WindowsSectionSecurityTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         string name = NewName();
@@ -206,7 +206,7 @@ public class WindowsSectionSecurityTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         const int capacity = 8;
@@ -266,7 +266,7 @@ public class WindowsUnnamedSectionTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         using WindowsSectionCapability capability = WindowsUnnamedSection.Create(
@@ -287,7 +287,7 @@ public class WindowsUnnamedSectionTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         using WindowsSectionCapability capability = WindowsUnnamedSection.Create(RegionSize);
@@ -304,14 +304,14 @@ public class WindowsUnnamedSectionTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         using WindowsSectionCapability capability = WindowsUnnamedSection.Create(
             RegionSize, WindowsSectionSecurity.CurrentUserOnly);
 
         using IProducerEndpoint producer = SparcRing.OpenProducer(
-            capability.Region, Capacity, SlotSize, options: null, CancellationToken.None);
+            capability.TakeRegion(), Capacity, SlotSize, options: null, CancellationToken.None);
 
         // The peer's mapping is produced from the transferred handle, exactly
         // as a receiving process would map a duplicated or inherited handle.
@@ -345,7 +345,7 @@ public class WindowsUnnamedSectionTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         SafeFileHandle handle = new(new IntPtr(1234), ownsHandle: true);
@@ -358,7 +358,7 @@ public class WindowsUnnamedSectionTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         Assert.Throws<ArgumentOutOfRangeException>(() => WindowsUnnamedSection.Create(0));
@@ -369,7 +369,7 @@ public class WindowsUnnamedSectionTests
     {
         if (!Supported)
         {
-            return;
+            Assert.Skip("Windows section security is only available on Windows.");
         }
 
         using WindowsSectionCapability capability = WindowsUnnamedSection.Create(RegionSize);

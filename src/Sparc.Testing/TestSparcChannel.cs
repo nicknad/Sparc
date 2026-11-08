@@ -1,4 +1,5 @@
 using Sparc.Channels;
+using Sparc.Core;
 using Sparc.InMemory;
 
 namespace Sparc.Testing;
@@ -12,14 +13,14 @@ public static class TestSparcChannel
     /// </summary>
     public static SparcChannel<T> Create<T>(
         ISparcCodec<T> codec,
-        int capacity = 1024,
+        int capacity = RingBufferLayout.DefaultCapacity,
         int slotSize = 0,
         TimeSpan? idleTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(codec);
         return SparcChannel<T>.CreateInProcess(
             new InMemoryMemoryRegionFactory(),
-            "sparc-test-" + Guid.NewGuid().ToString("N"),
+            TestRegionName.Create(),
             codec,
             capacity,
             slotSize,

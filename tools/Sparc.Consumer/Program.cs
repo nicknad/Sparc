@@ -1,6 +1,5 @@
 using System.Globalization;
 using Microsoft.Win32.SafeHandles;
-using Sparc.UnixMemoryMapped;
 using Sparc.WindowsMemoryMapped;
 using Sparc.Cli;
 using Sparc.Client;
@@ -55,9 +54,7 @@ internal static class Program
 
     private static int Run(ConsumerOptions options)
     {
-        IIpcMemoryRegionFactory factory = OperatingSystem.IsWindows()
-            ? new WindowsNamedMemoryMappedRegionFactory()
-            : new UnixFileMemoryMappedRegionFactory();
+        IIpcMemoryRegionFactory factory = SessionCliSupport.CreateFactory();
 
         SharedRingBufferOptions ringOptions = new()
         {
@@ -89,14 +86,9 @@ internal static class Program
                 $"slotSize={buffer.SlotSize} maxPayload={buffer.MaxPayloadSize}");
         }
 
-        using CancellationTokenSource cancellation = new();
-        Console.CancelKeyPress += (_, eventArgs) =>
-        {
-            eventArgs.Cancel = true;
-            cancellation.Cancel();
-        };
+        using CancellationTokenSource cancellation = SessionCliSupport.CreateCancellationSource();
 
-        using SessionNotification? notification = options.Notify ? CreateNotification(options.Name) : null;
+        using SessionNotification? notification = SessionCliSupport.CreateNotification(options.Notify, options.Name);
         ConsumerSession session = new(buffer, new ConsumerSessionOptions
         {
             Count = options.Count,
@@ -106,9 +98,7 @@ internal static class Program
             IdleTimeout = options.IdleTimeout,
             PerMessageDelay = options.Delay,
             Takeover = options.Takeover,
-            WaitMode = options.Notify
-                ? SessionWaitMode.Notification
-                : options.SpinOnly ? SessionWaitMode.SpinOnly : SessionWaitMode.SpinThenSleep,
+            WaitMode = SessionCliSupport.SelectWaitMode(options.Notify, options.SpinOnly),
             Notification = notification,
         });
 
@@ -120,21 +110,8 @@ internal static class Program
             Console.Error.WriteLine($"error: {result.FailureMessage}");
         }
 
-        return MapReason(result.Reason);
+        return SessionCliSupport.MapConsumerReason(result.Reason);
     }
-
-    private static SessionNotification CreateNotification(string regionName) =>
-        SessionNotification.CreateNamed(regionName);
-
-    private static int MapReason(SessionStopReason reason) => reason switch
-    {
-        SessionStopReason.Completed => RingBufferExitCodes.Success,
-        SessionStopReason.PeerStopped => RingBufferExitCodes.Incomplete,
-        SessionStopReason.Timeout => RingBufferExitCodes.Incomplete,
-        SessionStopReason.VerificationFailed => RingBufferExitCodes.VerificationFailed,
-        SessionStopReason.Cancelled => RingBufferExitCodes.Incomplete,
-        _ => RingBufferExitCodes.InternalError,
-    };
 
     private static void PrintSummary(ConsumerRunResult result, IConsumerEndpoint buffer, ConsumerOptions options)
     {

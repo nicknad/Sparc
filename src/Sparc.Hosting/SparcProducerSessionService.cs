@@ -49,59 +49,43 @@ public sealed class SparcProducerSessionService : BackgroundService
     public ProducerRunResult? Result { get; private set; }
 
     /// <inheritdoc />
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        IProducerEndpoint? endpoint = null;
-        try
-        {
-            endpoint = await Task.Run(
-                () => SparcRing.OpenProducer(
-                    _factory,
-                    _channel.Name,
-                    _channel.Capacity,
-                    _channel.SlotSize,
-                    _channel.ToRingOptions(_timeProvider, _session.Takeover),
-                    stoppingToken),
-                stoppingToken).ConfigureAwait(false);
-
-            _status.AttachProducer(endpoint);
-            _logger.LogInformation(
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        SparcHostedServiceRunner.ExecuteAsync(
+            _status,
+            _channel.Name,
+            _logger,
+            _completion,
+            token => SparcRing.OpenProducer(
+                _factory,
+                _channel.Name,
+                _channel.Capacity,
+                _channel.SlotSize,
+                _channel.ToRingOptions(_timeProvider, _session.Takeover),
+                token),
+            _status.AttachProducer,
+            endpoint => _logger.LogInformation(
                 "SPARC producer ready: name={Name} capacity={Capacity} slotSize={SlotSize}",
-                _channel.Name, endpoint.Capacity, endpoint.SlotSize);
-
-            ProducerRunResult result = await new ProducerSession(endpoint, _session, _timeProvider, _logger)
-                .RunAsync(stoppingToken)
-                .ConfigureAwait(false);
-
-            Result = result;
-            _status.ProducerResult = result;
-            SparcMetrics.RecordProducerRun(_channel.Name, result);
-            _logger.LogInformation(
-                "SPARC producer stopped: produced={Produced} reason={Reason} failure={Failure}",
-                result.Produced, result.Reason, result.FailureMessage);
-
-            if (result.FailureMessage is { } failure)
+                _channel.Name, endpoint.Capacity, endpoint.SlotSize),
+            _status.DetachProducer,
+            async (endpoint, token) =>
             {
-                // A structured session failure must not end the host silently.
-                throw new InvalidOperationException($"SPARC producer session failed: {failure}");
-            }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Host shutdown; the session reports stop reasons through its result.
-        }
-        catch (Exception exception)
-        {
-            _status.Fail(exception.Message);
-            SparcMetrics.RecordFailure(_channel.Name);
-            _logger.LogError(exception, "SPARC producer failed: {Message}", exception.Message);
-            throw;
-        }
-        finally
-        {
-            _status.DetachProducer();
-            endpoint?.Dispose();
-            _completion.TrySetResult();
-        }
-    }
+                ProducerRunResult result = await new ProducerSession(endpoint, _session, _timeProvider, _logger)
+                    .RunAsync(token)
+                    .ConfigureAwait(false);
+
+                Result = result;
+                _status.ProducerResult = result;
+                SparcMetrics.RecordProducerRun(_channel.Name, result);
+                _logger.LogInformation(
+                    "SPARC producer stopped: produced={Produced} reason={Reason} failure={Failure}",
+                    result.Produced, result.Reason, result.FailureMessage);
+
+                if (result.FailureMessage is { } failure)
+                {
+                    // A structured session failure must not end the host silently.
+                    throw new InvalidOperationException($"SPARC producer session failed: {failure}");
+                }
+            },
+            "SPARC producer failed: {Message}",
+            stoppingToken);
 }

@@ -267,7 +267,7 @@ public class ProcessLifecycleTests(ITestOutputHelper output)
     {
         if (!OperatingSystem.IsWindows())
         {
-            return; // section DACLs are Windows-only
+            Assert.Skip("Section DACLs are Windows-only.");
         }
 
         string name = SparcProcesses.NewName();
@@ -305,7 +305,7 @@ public class ProcessLifecycleTests(ITestOutputHelper output)
     {
         if (!OperatingSystem.IsWindows())
         {
-            return; // section DACLs are Windows-only
+            Assert.Skip("Section DACLs are Windows-only.");
         }
 
         string name = SparcProcesses.NewName();
@@ -344,7 +344,7 @@ public class ProcessLifecycleTests(ITestOutputHelper output)
     {
         if (!OperatingSystem.IsWindows())
         {
-            return; // unnamed sections and handle transfer are Windows-only
+            Assert.Skip("Unnamed sections and handle transfer are Windows-only.");
         }
 
         const int capacity = 1024;
@@ -358,7 +358,7 @@ public class ProcessLifecycleTests(ITestOutputHelper output)
         using WindowsSectionCapability capability = WindowsUnnamedSection.Create(
             size, WindowsSectionSecurity.CurrentUserOnly);
         using IProducerEndpoint producer = SparcRing.OpenProducer(
-            capability.Region, capacity, slotSize, options: null, TestContext.Current.CancellationToken);
+            capability.TakeRegion(), capacity, slotSize, options: null, TestContext.Current.CancellationToken);
 
         Process? consumer = null;
         try

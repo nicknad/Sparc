@@ -90,9 +90,16 @@ public sealed class SparcChannelReader<T> : IDisposable
         ArgumentNullException.ThrowIfNull(factory);
         ArgumentNullException.ThrowIfNull(codec);
 
+        TimeSpan effectiveIdleTimeout = idleTimeout ?? DefaultIdleTimeout;
+        if (effectiveIdleTimeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(idleTimeout), effectiveIdleTimeout, "The idle timeout must not be negative.");
+        }
+
         IConsumerEndpoint endpoint = SparcRing.OpenConsumer(
             factory, name, capacity, SparcChannelWriter<T>.ResolveSlotSize(codec, slotSize), options, cancellationToken);
-        return new SparcChannelReader<T>(endpoint, codec, idleTimeout ?? DefaultIdleTimeout);
+        return new SparcChannelReader<T>(endpoint, codec, effectiveIdleTimeout);
     }
 
     /// <summary>
@@ -180,14 +187,7 @@ public sealed class SparcChannelReader<T> : IDisposable
             return;
         }
 
-        try
-        {
-            _cancellation.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // The pump already completed and disposed the source.
-        }
+        _cancellation.Cancel();
 
         _endpoint.Dispose();
         _inbox.Writer.TryComplete();
@@ -239,10 +239,10 @@ public sealed class SparcChannelReader<T> : IDisposable
         {
             while (!_cancellation.IsCancellationRequested)
             {
+                ReadLease lease;
                 try
                 {
-                    using ReadLease lease = _endpoint.Read(_idleTimeout, _cancellation.Token);
-                    _inbox.Writer.TryWrite(_codec.Decode(lease.Payload));
+                    lease = _endpoint.Read(_idleTimeout, _cancellation.Token);
                 }
                 catch (RingBufferTimeoutException)
                 {
@@ -255,12 +255,19 @@ public sealed class SparcChannelReader<T> : IDisposable
                         DrainAfterProducerStop();
                         break;
                     }
+
+                    continue;
                 }
                 catch (ObjectDisposedException)
                 {
                     // Disposal racing the pump: complete cleanly so awaiters do
                     // not see a spurious channel error.
                     break;
+                }
+
+                using (lease)
+                {
+                    _inbox.Writer.TryWrite(_codec.Decode(lease.Payload));
                 }
             }
         }

@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using Sparc.Client.Diagnostics;
+using Sparc.Core;
 
 namespace Sparc.Benchmarks;
 
@@ -11,7 +12,7 @@ namespace Sparc.Benchmarks;
 /// </summary>
 public abstract class TwoThreadPump : IDisposable
 {
-    protected const int Capacity = 1024;
+    protected const int Capacity = RingBufferLayout.DefaultCapacity;
 
     private readonly Thread _producerThread;
     private readonly Thread _consumerThread;

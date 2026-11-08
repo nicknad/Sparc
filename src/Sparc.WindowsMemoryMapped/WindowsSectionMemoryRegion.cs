@@ -15,21 +15,18 @@ namespace Sparc.WindowsMemoryMapped;
 internal sealed unsafe class WindowsSectionMemoryRegion : IIpcMemoryRegion
 {
     private readonly SafeFileHandle? _sectionHandle;
-    private readonly bool _ownsHandle;
     private byte* _view;
     private int _disposed;
 
     internal WindowsSectionMemoryRegion(
         string name,
         SafeFileHandle? sectionHandle,
-        bool ownsHandle,
         byte* view,
         long size,
         bool isCreator)
     {
         Name = name;
         _sectionHandle = sectionHandle;
-        _ownsHandle = ownsHandle;
         _view = view;
         Size = size;
         IsCreator = isCreator;
@@ -48,7 +45,7 @@ internal sealed unsafe class WindowsSectionMemoryRegion : IIpcMemoryRegion
         {
             byte* view = WindowsSectionApi.MapReadWriteView(handle);
             return new WindowsSectionMemoryRegion(
-                name, handle, ownsHandle: true, view, size, isCreator: true);
+                name, handle, view, size, isCreator: true);
         }
         catch
         {
@@ -88,9 +85,9 @@ internal sealed unsafe class WindowsSectionMemoryRegion : IIpcMemoryRegion
             WindowsSectionApi.UnmapView(view);
         }
 
-        if (_ownsHandle)
+        if (_sectionHandle is not null)
         {
-            _sectionHandle?.Dispose();
+            _sectionHandle.Dispose();
         }
     }
 }

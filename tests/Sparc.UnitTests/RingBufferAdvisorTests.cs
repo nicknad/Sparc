@@ -30,7 +30,7 @@ public class RingBufferAdvisorTests
 
         Assert.Equal(256, advice.SlotSize);
         Assert.Equal(192L + 1024 * 256, advice.RegionBytes);
-        Assert.Equal(advice.RegionBytes / (1024.0 * 1024.0), advice.RegionMiB);
+        Assert.Equal(0.25018310546875, advice.RegionMiB);
         Assert.Null(advice.AlignmentWarning);
         Assert.StartsWith("fits in L2", advice.Residency, StringComparison.Ordinal);
     }

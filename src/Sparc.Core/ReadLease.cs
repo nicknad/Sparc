@@ -16,7 +16,6 @@ public ref struct ReadLease
         _payload = payload;
         Length = length;
         Type = type;
-        _done = false;
     }
 
     /// <summary>Read-only view of the payload, valid until the lease is disposed.</summary>

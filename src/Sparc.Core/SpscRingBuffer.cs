@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -211,8 +210,7 @@ public sealed class SpscRingBuffer : IRingBuffer
         _pending.Has = false;
         Debug.Assert((long)_pending.Offset + SlotSize <= _buffer.Length);
         Span<byte> slot = _buffer.AsSpan(_pending.Offset, SlotSize);
-        BinaryPrimitives.WriteInt32LittleEndian(slot, _pending.Length);
-        BinaryPrimitives.WriteInt32LittleEndian(slot[sizeof(int)..], _pending.Type);
+        SlotFraming.WriteHeader(slot, _pending.Length, _pending.Type);
 
         // Release: the caller's payload writes and the framing above must be
         // visible before the consumer can observe the advanced tail.
@@ -344,7 +342,6 @@ public sealed class SpscRingBuffer : IRingBuffer
     /// </param>
     public void Write(ReadOnlySpan<byte> payload, int type = 0, CancellationToken cancellationToken = default)
     {
-        Debug.Assert(payload.Length <= MaxPayloadSize);
         long startTimestamp = Stopwatch.GetTimestamp();
         long timeoutTicks = WriteTimeoutSeconds * Stopwatch.Frequency;
         SpinWait spin = new();

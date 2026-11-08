@@ -16,9 +16,16 @@ internal static class SlotFraming
         Debug.Assert(slot.Length >= RingBufferLayout.MessageHeaderSize);
         Debug.Assert(payload.Length <= slot.Length - RingBufferLayout.MessageHeaderSize);
 
-        BinaryPrimitives.WriteInt32LittleEndian(slot, payload.Length);
-        BinaryPrimitives.WriteInt32LittleEndian(slot[TypeOffset..], type);
+        WriteHeader(slot, payload.Length, type);
         payload.CopyTo(slot[RingBufferLayout.MessageHeaderSize..]);
+    }
+
+    public static void WriteHeader(Span<byte> slot, int length, int type)
+    {
+        Debug.Assert(slot.Length >= RingBufferLayout.MessageHeaderSize);
+
+        BinaryPrimitives.WriteInt32LittleEndian(slot, length);
+        BinaryPrimitives.WriteInt32LittleEndian(slot[TypeOffset..], type);
     }
 
     public static int ReadHeader(ReadOnlySpan<byte> slot, out int type)

@@ -117,17 +117,17 @@ public class StreamReadBufferTests
             scratch, cancellationToken: TestContext.Current.CancellationToken);
         try
         {
-            bool threw = false;
+            Exception? caught = null;
             try
             {
                 buffer.CopyTo(new byte[40]);
             }
-            catch (InvalidOperationException)
+            catch (Exception exception)
             {
-                threw = true;
+                caught = exception;
             }
 
-            Assert.True(threw);
+            Assert.IsType<InvalidOperationException>(caught);
             Assert.Equal(0, buffer.BytesConsumed);
         }
         finally
@@ -172,17 +172,17 @@ public class StreamReadBufferTests
             scratch, cancellationToken: TestContext.Current.CancellationToken);
         try
         {
-            bool threw = false;
+            Exception? caught = null;
             try
             {
                 buffer.TryGetSpan(40, out _);
             }
-            catch (InvalidOperationException)
+            catch (Exception exception)
             {
-                threw = true;
+                caught = exception;
             }
 
-            Assert.True(threw);
+            Assert.IsType<InvalidOperationException>(caught);
         }
         finally
         {
@@ -301,17 +301,17 @@ public class StreamReadBufferTests
             Assert.Equal(0xAA, first[0]);
             buffer.Advance(first.Length);
 
-            bool threw = false;
+            Exception? caught = null;
             try
             {
-                buffer.GetUnreadSpan();
+                _ = buffer.GetUnreadSpan();
             }
-            catch (RingBufferCorruptedException)
+            catch (Exception exception)
             {
-                threw = true;
+                caught = exception;
             }
 
-            Assert.True(threw);
+            Assert.IsType<RingBufferCorruptedException>(caught);
         }
         finally
         {
@@ -364,20 +364,17 @@ public class StreamReadBufferTests
 
             Assert.False(buffer.TryGetSpan(64, out _));
 
-            bool threw = false;
-            string? message = null;
+            Exception? caught = null;
             try
             {
                 buffer.CopyTo(new byte[64]);
             }
-            catch (InvalidOperationException exception)
+            catch (Exception exception)
             {
-                threw = true;
-                message = exception.Message;
+                caught = exception;
             }
 
-            Assert.True(threw);
-            Assert.Contains("fewer than", message);
+            Assert.Contains("fewer than", Assert.IsType<InvalidOperationException>(caught).Message);
         }
         finally
         {
@@ -392,17 +389,8 @@ public class StreamReadBufferTests
         PublishChunk(pair.Writer.Endpoint, type: 1, first: true, last: false, payload: []);
 
         byte[] scratch = new byte[16];
-        bool threw = false;
-        try
-        {
-            pair.Reader.BeginMessage(scratch, cancellationToken: TestContext.Current.CancellationToken);
-        }
-        catch (RingBufferCorruptedException)
-        {
-            threw = true;
-        }
-
-        Assert.True(threw);
+        Assert.Throws<RingBufferCorruptedException>(() =>
+            pair.Reader.BeginMessage(scratch, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]

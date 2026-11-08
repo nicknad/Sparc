@@ -12,10 +12,10 @@ public sealed class SparcChannelOptions
     public string Name { get; set; } = string.Empty;
 
     /// <summary>Number of slots; must be a power of two.</summary>
-    public int Capacity { get; set; } = SparcRing.DefaultCapacity;
+    public int Capacity { get; set; } = RingBufferLayout.DefaultCapacity;
 
     /// <summary>Bytes per slot; must exceed the message header.</summary>
-    public int SlotSize { get; set; } = SparcRing.DefaultSlotSize;
+    public int SlotSize { get; set; } = RingBufferLayout.DefaultSlotSize;
 
     /// <summary>How long to wait for the region to appear (or finish initializing).</summary>
     public TimeSpan OpenTimeout { get; set; } = TimeSpan.FromSeconds(10);

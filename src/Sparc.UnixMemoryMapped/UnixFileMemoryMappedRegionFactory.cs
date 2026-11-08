@@ -33,12 +33,6 @@ namespace Sparc.UnixMemoryMapped;
 /// </remarks>
 public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
 {
-    private static readonly char[] InvalidNameCharacters = Path.GetInvalidFileNameChars()
-        .Append(Path.DirectorySeparatorChar)
-        .Append(Path.AltDirectorySeparatorChar)
-        .Distinct()
-        .ToArray();
-
     /// <summary>Creates a factory rooted at <paramref name="directory"/>.</summary>
     /// <param name="directory">
     /// Directory for the backing files; when null or empty, a <c>sparc</c>
@@ -130,6 +124,7 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
     public bool TryReset(string name)
     {
         EnsureSupported();
+        RegionName.Validate(name);
         string path = PathFor(name);
         if (!File.Exists(path))
         {
@@ -173,6 +168,17 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
         catch
         {
             stream.Dispose();
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+
             throw;
         }
     }
@@ -209,20 +215,11 @@ public sealed class UnixFileMemoryMappedRegionFactory : IIpcMemoryRegionFactory
     private static MemoryMappedFile MapFile(string path) => MemoryMappedFile.CreateFromFile(
         path, FileMode.Open, mapName: null, capacity: 0, MemoryMappedFileAccess.ReadWrite);
 
-    private string PathFor(string name)
-    {
-        if (name.IndexOfAny(InvalidNameCharacters) >= 0 || name is "." or "..")
-        {
-            throw new ArgumentException(
-                $"Region name '{name}' must be a plain file name without directory separators.", nameof(name));
-        }
+    private string PathFor(string name) => Path.Combine(DirectoryPath, name);
 
-        return Path.Combine(DirectoryPath, name);
-    }
-
-    private static void EnsureSupported()
+    private void EnsureSupported()
     {
-        if (OperatingSystem.IsWindows() || OperatingSystem.IsBrowser() || OperatingSystem.IsWasi())
+        if (!IsSupported)
         {
             throw new IpcPlatformNotSupportedException(
                 "Sparc.UnixMemoryMapped uses file-backed memory-mapped files and is meant for Unix-like systems. " +

@@ -41,10 +41,13 @@ public sealed class DemoTransferWorker(
 
     private async Task RunTransferAsync(int count, CancellationToken cancellationToken)
     {
-        IProducerEndpoint producerView = await OpenProducerAsync(cancellationToken).ConfigureAwait(false);
-        IConsumerEndpoint consumerView = await OpenConsumerAsync(cancellationToken).ConfigureAwait(false);
+        IProducerEndpoint? producerView = null;
+        IConsumerEndpoint? consumerView = null;
         try
         {
+            producerView = await OpenProducerAsync(cancellationToken).ConfigureAwait(false);
+            consumerView = await OpenConsumerAsync(cancellationToken).ConfigureAwait(false);
+
             ProducerSession producer = new(
                 producerView,
                 new ProducerSessionOptions { Count = count, PayloadSize = DemoRing.PayloadSize },
@@ -64,7 +67,9 @@ public sealed class DemoTransferWorker(
 
             // Disposing the producer view publishes "producer stopped", which is
             // how the consumer learns that the stream is complete and can drain.
-            producerView.Dispose();
+            IProducerEndpoint producerToDispose = producerView;
+            producerView = null;
+            producerToDispose.Dispose();
 
             ConsumerRunResult consumerResult = await consumerTask.ConfigureAwait(false);
             coordinator.Complete(producerResult, consumerResult);
@@ -77,10 +82,15 @@ public sealed class DemoTransferWorker(
                 consumerResult.Reason,
                 consumerResult.Elapsed.TotalSeconds);
         }
+        catch
+        {
+            coordinator.Reset();
+            throw;
+        }
         finally
         {
-            producerView.Dispose();
-            consumerView.Dispose();
+            producerView?.Dispose();
+            consumerView?.Dispose();
         }
     }
 

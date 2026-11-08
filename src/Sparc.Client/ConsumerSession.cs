@@ -13,9 +13,6 @@ namespace Sparc.Client;
 /// </summary>
 public sealed class ConsumerSession
 {
-    private const int ProgressReports = 10;
-    private const long CancellationCheckMask = 0xFFFF;
-
     private readonly IConsumerEndpoint _buffer;
     private readonly ConsumerSessionOptions _options;
     private readonly TimeProvider _timeProvider;
@@ -73,7 +70,7 @@ public sealed class ConsumerSession
         long idleTimeoutTicks = (long)(_options.IdleTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
         bool idleTimeoutEnabled = _options.IdleTimeout != Timeout.InfiniteTimeSpan;
         long pacingTicks = MessagePacer.TicksFor(_timeProvider, _options.PerMessageDelay);
-        long progressInterval = _options.Count > 0 ? Math.Max(1, _options.Count / ProgressReports) : 0;
+        long progressInterval = SessionRuntime.ProgressInterval(_options.Count);
         long runStartTimestamp = _timeProvider.GetTimestamp();
         SessionStopReason reason = SessionStopReason.Completed;
 
@@ -100,7 +97,7 @@ public sealed class ConsumerSession
                 // Paced runs can spend minutes between mask boundaries, so poll
                 // every message once pacing is on; unpaced runs keep the batched
                 // fast-path check.
-                if ((pacingTicks > 0 || (++cancellationCounter & CancellationCheckMask) == 0)
+                if (SessionRuntime.ShouldCheckCancellation(ref cancellationCounter, pacingTicks)
                     && cancellationToken.IsCancellationRequested)
                 {
                     reason = SessionStopReason.Cancelled;
@@ -144,7 +141,13 @@ public sealed class ConsumerSession
                 break;
             }
 
-            WaitWhileEmpty(ref spin, cancellationToken);
+            SessionRuntime.WaitForNotification(
+                _buffer,
+                _options.WaitMode,
+                _options.Notification,
+                waitOnDataSignal: true,
+                ref spin,
+                cancellationToken);
         }
 
         long endTimestamp = _timeProvider.GetTimestamp();
@@ -169,42 +172,19 @@ public sealed class ConsumerSession
     public Task<ConsumerRunResult> RunAsync(
         CancellationToken cancellationToken = default,
         IProgress<ConsumerProgress>? progress = null) =>
-        Task.Factory.StartNew(
-            () => Run(cancellationToken, progress),
-            CancellationToken.None,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default);
+        SessionRuntime.RunOnDedicatedThread(() => Run(cancellationToken, progress));
 
     /// <summary>
     /// Waits until the producer claims its role (<see cref="RingBufferEndpointState.Running"/>)
     /// or <paramref name="timeout"/> elapses. Returns false when the producer did
     /// not appear or has already stopped.
     /// </summary>
-    public async Task<bool> WaitForPeerAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
-    {
-        long startTimestamp = _timeProvider.GetTimestamp();
-        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(5), _timeProvider);
-        while (true)
-        {
-            RingBufferEndpointState peer = _buffer.ProducerState;
-            if (peer is RingBufferEndpointState.Running)
-            {
-                return true;
-            }
-
-            if (peer is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
-            {
-                return false;
-            }
-
-            if (_timeProvider.GetElapsedTime(startTimestamp) >= timeout)
-            {
-                return false;
-            }
-
-            await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false);
-        }
-    }
+    public Task<bool> WaitForPeerAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+        SessionRuntime.WaitForPeerAsync(
+            () => _buffer.ProducerState,
+            _timeProvider,
+            timeout,
+            cancellationToken);
 
     /// <summary>
     /// Reads and verifies one message. Returns 1 when a message was consumed,
@@ -229,13 +209,14 @@ public sealed class ConsumerSession
             {
                 state.Failure = failure;
 
-                // Consume the invalid message (the copy path advanced head before
-                // verifying) so the session stops instead of re-reading it.
+                // Consume the invalid message (TryPeek does not advance head) so the
+                // session stops instead of re-reading it.
                 _buffer.AdvanceRead();
                 if (_options.WaitMode == SessionWaitMode.Notification)
                 {
                     Interlocked.MemoryBarrier();
-                    SignalSpaceIfPeerWaiting();
+                    SessionRuntime.SignalIfPeerWaiting(
+                        _buffer, _options.WaitMode, _options.Notification, signalData: false);
                 }
 
                 return -1;
@@ -262,7 +243,8 @@ public sealed class ConsumerSession
         if (_options.WaitMode == SessionWaitMode.Notification)
         {
             Interlocked.MemoryBarrier();
-            SignalSpaceIfPeerWaiting();
+            SessionRuntime.SignalIfPeerWaiting(
+                _buffer, _options.WaitMode, _options.Notification, signalData: false);
         }
 
         state.Expected++;
@@ -343,73 +325,6 @@ public sealed class ConsumerSession
         state.Received > 1 && state.FirstMessageTimestamp != 0
             ? _timeProvider.GetElapsedTime(state.FirstMessageTimestamp, state.LastMessageTimestamp)
             : _timeProvider.GetElapsedTime(runStartTimestamp, endTimestamp);
-
-    private void SignalSpaceIfPeerWaiting()
-    {
-        if (_options.WaitMode != SessionWaitMode.Notification)
-        {
-            return;
-        }
-
-        try
-        {
-            if (_buffer.IsPeerWaiting())
-            {
-                _options.Notification!.Space.Signal();
-            }
-        }
-        catch (ObjectDisposedException)
-        {
-            // The endpoint was disposed concurrently (host shutdown); the
-            // space signal is advisory and the run loop reports the stop.
-        }
-    }
-
-    private void WaitWhileEmpty(ref SpinWait spin, CancellationToken cancellationToken)
-    {
-        if (_options.WaitMode == SessionWaitMode.Notification)
-        {
-            try
-            {
-                // Declare the wait before the re-check: a producer that publishes
-                // after this point reads the flag and raises the latch.
-                _buffer.SetWaiting(true);
-
-                // Full fence between our waiting-flag store and the count load so
-                // the flag cannot be delayed past the check on weak memory models.
-                Interlocked.MemoryBarrier();
-                try
-                {
-                    if (_buffer.Count > 0)
-                    {
-                        return; // data appeared before the wait; retry the read
-                    }
-
-                    _options.Notification!.Data.Wait(SessionWaitTiming.WaitSlice, cancellationToken);
-                }
-                finally
-                {
-                    _buffer.SetWaiting(false);
-                }
-            }
-            catch (ObjectDisposedException)
-            {
-                // The endpoint was disposed concurrently (host shutdown); the
-                // next loop iteration observes the cancellation.
-            }
-
-            return;
-        }
-
-        if (_options.WaitMode == SessionWaitMode.SpinOnly)
-        {
-            Thread.SpinWait(64);
-        }
-        else
-        {
-            spin.SpinOnce();
-        }
-    }
 
     private static ConsumerRunResult Cancelled() =>
         new(0, 0, TimeSpan.Zero, SessionStopReason.Cancelled, new LatencyHistogram(), null);

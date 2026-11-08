@@ -128,9 +128,9 @@ public sealed class LatencyHistogram
 
         long lower = LowerBoundTicks(index);
         long upper = index + 1 < _buckets.Length ? LowerBoundTicks(index + 1) : _max;
-        // Buckets past magnitude 62 are never filled (IndexFor caps there), so the
-        // next lower bound can wrap at or below this one; and the holding bucket
-        // always contains a sample, so _max >= lower here. One guard covers both.
+        // IndexFor caps at magnitude MagnitudeCount - 2, so the highest buckets
+        // are never filled; the holding bucket always contains a sample, so
+        // _max >= lower here and can stand in when upper is not above lower.
         if (upper <= lower)
         {
             upper = _max;
@@ -210,7 +210,7 @@ public sealed class LatencyHistogram
         long power = 1L << magnitude;
 
         // power + power * sub / 16, computed in a way that cannot overflow
-        // even for the largest magnitude (2^62 * 15 does not fit in a long).
+        // even for the largest magnitude.
         return power + power / SubBucketCount * sub + power % SubBucketCount * sub / SubBucketCount;
     }
 }

@@ -8,7 +8,6 @@ internal sealed class FileMemoryMappedRegion : IIpcMemoryRegion
 {
     private readonly MemoryMappedFile _file;
     private readonly MemoryMappedViewAccessor _accessor;
-    private readonly bool _pointerAcquired;
     private int _disposed;
 
     internal FileMemoryMappedRegion(string name, MemoryMappedFile file, bool isCreator)
@@ -17,16 +16,27 @@ internal sealed class FileMemoryMappedRegion : IIpcMemoryRegion
         IsCreator = isCreator;
         _file = file;
 
-        _accessor = file.CreateViewAccessor(0, 0, MemoryMappedFileAccess.ReadWrite);
-        unsafe
+        MemoryMappedViewAccessor? accessor = null;
+        try
         {
-            byte* pointer = null;
-            _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
-            _pointerAcquired = true;
-            Pointer = pointer + _accessor.PointerOffset;
+            accessor = file.CreateViewAccessor(0, 0, MemoryMappedFileAccess.ReadWrite);
+            unsafe
+            {
+                byte* pointer = null;
+                accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref pointer);
+                Pointer = pointer + accessor.PointerOffset;
+            }
+
+            Size = accessor.Capacity;
+        }
+        catch
+        {
+            accessor?.Dispose();
+            file.Dispose();
+            throw;
         }
 
-        Size = _accessor.Capacity;
+        _accessor = accessor;
     }
 
     public string Name { get; }
@@ -46,10 +56,7 @@ internal sealed class FileMemoryMappedRegion : IIpcMemoryRegion
 
         unsafe
         {
-            if (_pointerAcquired)
-            {
-                _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
-            }
+            _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
         }
 
         _accessor.Dispose();

@@ -190,7 +190,7 @@ internal sealed class RingBufferRegion : IDisposable
     /// <summary>Reads the current header snapshot from the region.</summary>
     public RingBufferHeader ReadHeader()
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ThrowIfDisposed();
         unsafe
         {
             return RingBufferHeader.Read(new ReadOnlySpan<byte>(_region.Pointer, RingBufferLayout.HeaderSize));
@@ -200,7 +200,7 @@ internal sealed class RingBufferRegion : IDisposable
     /// <summary>Reads an endpoint state with acquire semantics.</summary>
     public RingBufferEndpointState ReadEndpointState(RingBufferEndpointRole role)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ThrowIfDisposed();
         unsafe
         {
             return (RingBufferEndpointState)Volatile.Read(ref Unsafe.AsRef<int>(_region.Pointer + StateOffset(role)));
@@ -210,7 +210,7 @@ internal sealed class RingBufferRegion : IDisposable
     /// <summary>Writes an endpoint state with release semantics.</summary>
     public void WriteEndpointState(RingBufferEndpointRole role, RingBufferEndpointState state)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ThrowIfDisposed();
         unsafe
         {
             Volatile.Write(ref Unsafe.AsRef<int>(_region.Pointer + StateOffset(role)), (int)state);
@@ -220,7 +220,7 @@ internal sealed class RingBufferRegion : IDisposable
     /// <summary>Reads an endpoint's "waiting for a notification" flag.</summary>
     internal int ReadWaiting(RingBufferEndpointRole role)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ThrowIfDisposed();
         unsafe
         {
             return Volatile.Read(ref Unsafe.AsRef<int>(_region.Pointer + WaitingOffset(role)));
@@ -230,7 +230,7 @@ internal sealed class RingBufferRegion : IDisposable
     /// <summary>Writes an endpoint's "waiting for a notification" flag.</summary>
     internal void WriteWaiting(RingBufferEndpointRole role, int waiting)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ThrowIfDisposed();
         unsafe
         {
             Volatile.Write(ref Unsafe.AsRef<int>(_region.Pointer + WaitingOffset(role)), waiting);
@@ -244,7 +244,7 @@ internal sealed class RingBufferRegion : IDisposable
     public RingBufferEndpointState CompareExchangeEndpointState(
         RingBufferEndpointRole role, RingBufferEndpointState desired, RingBufferEndpointState expected)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ThrowIfDisposed();
         unsafe
         {
             return (RingBufferEndpointState)Interlocked.CompareExchange(
@@ -260,6 +260,11 @@ internal sealed class RingBufferRegion : IDisposable
         }
 
         _region.Dispose();
+    }
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
     }
 
     private static int StateOffset(RingBufferEndpointRole role) => role switch

@@ -47,59 +47,43 @@ public sealed class SparcConsumerSessionService : BackgroundService
     public ConsumerRunResult? Result { get; private set; }
 
     /// <inheritdoc />
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        IConsumerEndpoint? endpoint = null;
-        try
-        {
-            endpoint = await Task.Run(
-                () => SparcRing.OpenConsumer(
-                    _factory,
-                    _channel.Name,
-                    _channel.Capacity,
-                    _channel.SlotSize,
-                    _channel.ToRingOptions(_timeProvider, _session.Takeover),
-                    stoppingToken),
-                stoppingToken).ConfigureAwait(false);
-
-            _status.AttachConsumer(endpoint);
-            _logger.LogInformation(
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) =>
+        SparcHostedServiceRunner.ExecuteAsync(
+            _status,
+            _channel.Name,
+            _logger,
+            _completion,
+            token => SparcRing.OpenConsumer(
+                _factory,
+                _channel.Name,
+                _channel.Capacity,
+                _channel.SlotSize,
+                _channel.ToRingOptions(_timeProvider, _session.Takeover),
+                token),
+            _status.AttachConsumer,
+            endpoint => _logger.LogInformation(
                 "SPARC consumer ready: name={Name} capacity={Capacity} slotSize={SlotSize}",
-                _channel.Name, endpoint.Capacity, endpoint.SlotSize);
-
-            ConsumerRunResult result = await new ConsumerSession(endpoint, _session, _timeProvider, _logger)
-                .RunAsync(stoppingToken)
-                .ConfigureAwait(false);
-
-            Result = result;
-            _status.ConsumerResult = result;
-            SparcMetrics.RecordConsumerRun(_channel.Name, result);
-            _logger.LogInformation(
-                "SPARC consumer stopped: received={Received} reason={Reason} failure={Failure}",
-                result.Received, result.Reason, result.FailureMessage);
-
-            if (result.FailureMessage is { } failure)
+                _channel.Name, endpoint.Capacity, endpoint.SlotSize),
+            _status.DetachConsumer,
+            async (endpoint, token) =>
             {
-                // A structured session failure must not end the host silently.
-                throw new InvalidOperationException($"SPARC consumer session failed: {failure}");
-            }
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Host shutdown; the session reports stop reasons through its result.
-        }
-        catch (Exception exception)
-        {
-            _status.Fail(exception.Message);
-            SparcMetrics.RecordFailure(_channel.Name);
-            _logger.LogError(exception, "SPARC consumer failed: {Message}", exception.Message);
-            throw;
-        }
-        finally
-        {
-            _status.DetachConsumer();
-            endpoint?.Dispose();
-            _completion.TrySetResult();
-        }
-    }
+                ConsumerRunResult result = await new ConsumerSession(endpoint, _session, _timeProvider, _logger)
+                    .RunAsync(token)
+                    .ConfigureAwait(false);
+
+                Result = result;
+                _status.ConsumerResult = result;
+                SparcMetrics.RecordConsumerRun(_channel.Name, result);
+                _logger.LogInformation(
+                    "SPARC consumer stopped: received={Received} reason={Reason} failure={Failure}",
+                    result.Received, result.Reason, result.FailureMessage);
+
+                if (result.FailureMessage is { } failure)
+                {
+                    // A structured session failure must not end the host silently.
+                    throw new InvalidOperationException($"SPARC consumer session failed: {failure}");
+                }
+            },
+            "SPARC consumer failed: {Message}",
+            stoppingToken);
 }

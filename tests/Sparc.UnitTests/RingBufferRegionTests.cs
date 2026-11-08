@@ -156,7 +156,7 @@ public class WindowsNamedMemoryMappedRegionFactoryTests
         Assert.Equal(OperatingSystem.IsWindows(), Factory.IsSupported);
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Assert.Skip("Named memory-mapped files are Windows-only.");
         }
 
         string name = NewName();
@@ -177,7 +177,7 @@ public class WindowsNamedMemoryMappedRegionFactoryTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Assert.Skip("Named memory-mapped files are Windows-only.");
         }
 
         string name = NewName();
@@ -198,7 +198,7 @@ public class WindowsNamedMemoryMappedRegionFactoryTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Assert.Skip("Named memory-mapped files are Windows-only.");
         }
 
         string name = NewName();
@@ -222,7 +222,7 @@ public class WindowsNamedMemoryMappedRegionFactoryTests
     {
         if (!OperatingSystem.IsWindows())
         {
-            return;
+            Assert.Skip("Named memory-mapped files are Windows-only.");
         }
 
         string name = NewName();

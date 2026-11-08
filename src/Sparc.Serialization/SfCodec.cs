@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using SerializerFoundation;
 using Sparc.Channels;
 
@@ -32,9 +31,8 @@ public delegate T SfDeserializer<T>(ref CompatibleReadOnlySpanReadBuffer buffer)
 /// <see cref="ISparcCodec{T}"/>: the serializer writes through
 /// <see cref="IWriteBuffer"/> into the caller's destination span and reads
 /// through <see cref="IReadBuffer"/> from a slot's payload span, with no
-/// intermediate serializer copy. The channel itself still stages encoded bytes
-/// in a <see cref="MaxSize"/> scratch buffer and publishes one copy into the
-/// slot.
+/// intermediate serializer copy. The channel reserves a slot and encodes
+/// directly into its payload.
 /// </summary>
 /// <typeparam name="T">Message type.</typeparam>
 /// <remarks>
@@ -72,15 +70,17 @@ public sealed class SfCodec<T> : ISparcCodec<T>
     /// <inheritdoc />
     public unsafe int Encode(T item, Span<byte> destination)
     {
-        Debug.Assert(
-            destination.Length >= MaxSize,
-            "ISparcCodec<T>.Encode requires a destination of at least MaxSize bytes.");
+        if (destination.Length < MaxSize)
+        {
+            throw new ArgumentException(
+                $"The destination must be at least the codec maximum of {MaxSize} bytes.",
+                nameof(destination));
+        }
 
         fixed (byte* pointer = destination)
         {
-            CompatibleSpanWriteBuffer buffer = new(pointer, Math.Min(destination.Length, MaxSize));
+            CompatibleSpanWriteBuffer buffer = new(pointer, MaxSize);
             _serialize(ref buffer, item);
-            Debug.Assert(buffer.BytesWritten <= MaxSize);
             return (int)buffer.BytesWritten;
         }
     }
