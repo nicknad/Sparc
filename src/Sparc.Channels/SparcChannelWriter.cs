@@ -68,7 +68,15 @@ public sealed class SparcChannelWriter<T> : IDisposable
 
         IProducerEndpoint endpoint = SparcRing.OpenProducer(
             factory, name, capacity, ResolveSlotSize(codec, slotSize), options, cancellationToken);
-        return new SparcChannelWriter<T>(endpoint, codec);
+        try
+        {
+            return new SparcChannelWriter<T>(endpoint, codec);
+        }
+        catch
+        {
+            endpoint.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Encodes and publishes one message; false when the ring is full.</summary>

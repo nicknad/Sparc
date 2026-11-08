@@ -28,7 +28,7 @@ public class UnixFileMemoryMappedRegionFactoryTests
         Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
         if (!factory.IsSupported)
         {
-            return;
+            Assert.Skip("File-backed memory mappings are Unix-only.");
         }
 
         try
@@ -58,6 +58,7 @@ public class UnixFileMemoryMappedRegionFactoryTests
         Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
         if (OperatingSystem.IsWindows())
         {
+            Assert.Skip("Unix file modes are not available on Windows.");
             return;
         }
 
@@ -88,7 +89,7 @@ public class UnixFileMemoryMappedRegionFactoryTests
         Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
         if (!factory.IsSupported)
         {
-            return;
+            Assert.Skip("File-backed memory mappings are Unix-only.");
         }
 
         try
@@ -120,7 +121,7 @@ public class UnixFileMemoryMappedRegionFactoryTests
         Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
         if (!factory.IsSupported)
         {
-            return;
+            Assert.Skip("File-backed memory mappings are Unix-only.");
         }
 
         try
@@ -143,7 +144,7 @@ public class UnixFileMemoryMappedRegionFactoryTests
         Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
         if (!factory.IsSupported)
         {
-            return;
+            Assert.Skip("File-backed memory mappings are Unix-only.");
         }
 
         try
@@ -169,7 +170,7 @@ public class UnixFileMemoryMappedRegionFactoryTests
         Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
         if (!factory.IsSupported)
         {
-            return;
+            Assert.Skip("File-backed memory mappings are Unix-only.");
         }
 
         try
@@ -201,7 +202,7 @@ public class UnixFileMemoryMappedRegionFactoryTests
         Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
         if (!factory.IsSupported)
         {
-            return;
+            Assert.Skip("File-backed memory mappings are Unix-only.");
         }
 
         try
@@ -235,7 +236,7 @@ public class UnixFileMemoryMappedRegionFactoryTests
         Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
         if (!factory.IsSupported)
         {
-            return;
+            Assert.Skip("File-backed memory mappings are Unix-only.");
         }
 
         try
@@ -261,7 +262,7 @@ public class UnixFileMemoryMappedRegionFactoryTests
         Assert.Equal(!OperatingSystem.IsWindows(), factory.IsSupported);
         if (!factory.IsSupported)
         {
-            return;
+            Assert.Skip("File-backed memory mappings are Unix-only.");
         }
 
         try

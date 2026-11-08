@@ -1,6 +1,5 @@
 using System.Globalization;
 using Microsoft.Win32.SafeHandles;
-using Sparc.UnixMemoryMapped;
 using Sparc.WindowsMemoryMapped;
 using Sparc.Cli;
 using Sparc.Client;
@@ -61,9 +60,7 @@ internal static class Program
 
     private static int Run(ProducerOptions options)
     {
-        IIpcMemoryRegionFactory factory = OperatingSystem.IsWindows()
-            ? new WindowsNamedMemoryMappedRegionFactory()
-            : new UnixFileMemoryMappedRegionFactory();
+        IIpcMemoryRegionFactory factory = SessionCliSupport.CreateFactory();
 
         SharedRingBufferOptions ringOptions = new()
         {
@@ -94,14 +91,9 @@ internal static class Program
                 $"slotSize={buffer.SlotSize} maxPayload={buffer.MaxPayloadSize}");
         }
 
-        using CancellationTokenSource cancellation = new();
-        Console.CancelKeyPress += (_, eventArgs) =>
-        {
-            eventArgs.Cancel = true;
-            cancellation.Cancel();
-        };
+        using CancellationTokenSource cancellation = SessionCliSupport.CreateCancellationSource();
 
-        using SessionNotification? notification = options.Notify ? CreateNotification(options.Name) : null;
+        using SessionNotification? notification = SessionCliSupport.CreateNotification(options.Notify, options.Name);
         ProducerSession session = new(buffer, new ProducerSessionOptions
         {
             Count = options.Count,
@@ -110,9 +102,7 @@ internal static class Program
             FullTimeout = options.FullTimeout,
             PerMessageDelay = options.Delay,
             Takeover = options.Takeover,
-            WaitMode = options.Notify
-                ? SessionWaitMode.Notification
-                : options.SpinOnly ? SessionWaitMode.SpinOnly : SessionWaitMode.SpinThenSleep,
+            WaitMode = SessionCliSupport.SelectWaitMode(options.Notify, options.SpinOnly),
             Notification = notification,
         });
 
@@ -124,7 +114,7 @@ internal static class Program
             Console.Error.WriteLine($"error: {result.FailureMessage}");
         }
 
-        return MapReason(result.Reason);
+        return SessionCliSupport.MapProducerReason(result.Reason);
     }
 
     private static void PrintAdvice(ProducerOptions options)
@@ -162,18 +152,6 @@ internal static class Program
                 $"at {advice.PayloadSize} bytes/message"));
         }
     }
-
-    private static SessionNotification CreateNotification(string regionName) =>
-        SessionNotification.CreateNamed(regionName);
-
-    private static int MapReason(SessionStopReason reason) => reason switch
-    {
-        SessionStopReason.Completed => RingBufferExitCodes.Success,
-        SessionStopReason.PeerStopped => RingBufferExitCodes.Incomplete,
-        SessionStopReason.Timeout => RingBufferExitCodes.Timeout,
-        SessionStopReason.Cancelled => RingBufferExitCodes.Incomplete,
-        _ => RingBufferExitCodes.InternalError,
-    };
 
     private static void PrintSummary(ProducerRunResult result, IProducerEndpoint buffer, ProducerOptions options)
     {

@@ -8,35 +8,34 @@ internal sealed class ProducerOptions
 {
     public const int MessageHeaderBytes = RingBufferMessage.HeaderSize;
 
-    public string Name { get; private set; } = string.Empty;
-    public long Count { get; private set; } = 1_000_000;
+    public CommonOptions Common { get; } = new(count: 1_000_000);
+
+    public string Name => Common.Name;
+    public long Count => Common.Count;
+    public int Capacity => Common.Capacity;
+    public int SlotSize => Common.SlotSize;
+    public int Type => Common.Type;
+    public TimeSpan OpenTimeout => Common.OpenTimeout;
+    public TimeSpan Delay => Common.Delay;
+    public bool Takeover => Common.Takeover;
+    public bool SpinOnly => Common.SpinOnly;
+    public bool Notify => Common.Notify;
+    public bool RecreateStale => Common.RecreateStale;
+    public bool RequireExisting => Common.RequireExisting;
+    public bool SecurityCurrentUser => Common.SecurityCurrentUser;
+    public string? SectionHandle => Common.SectionHandle;
+    public bool Quiet => Common.Quiet;
+    public bool ShowHelp => Common.ShowHelp;
+    public string Format => Common.Format;
+
+    public bool JsonFormat => Common.JsonFormat;
+
     public int Size { get; private set; } = 64;
-    public int Capacity { get; private set; } = RingBufferLayout.DefaultCapacity;
-    public int SlotSize { get; private set; }
-    public int Type { get; private set; } = 1;
-    public TimeSpan OpenTimeout { get; private set; } = TimeSpan.FromSeconds(10);
     public TimeSpan FullTimeout { get; private set; } = TimeSpan.FromSeconds(30);
-    public TimeSpan Delay { get; private set; }
-    public bool Takeover { get; private set; }
-    public bool SpinOnly { get; private set; }
-    public bool Notify { get; private set; }
-    public bool RecreateStale { get; private set; }
-    public bool RequireExisting { get; private set; }
-    public bool SecurityCurrentUser { get; private set; }
-    public string? SectionHandle { get; private set; }
-    public bool Quiet { get; private set; }
-    public bool ShowHelp { get; private set; }
     public bool Advise { get; private set; }
     public double? TargetGiB { get; private set; }
-    public string Format { get; private set; } = "text";
 
-    public bool JsonFormat => OutputFormat.IsJson(Format);
-
-    public int EffectiveSlotSize => SlotSize > 0
-        ? SlotSize
-        : Math.Max(
-            RingBufferLayout.DefaultSlotSize,
-            RingBufferLayout.RoundSlotSizeToCacheLine(Size + RingBufferLayout.MessageHeaderSize));
+    public int EffectiveSlotSize => RingBufferAdvisor.SlotSizeFor(Size, SlotSize);
 
     public const string Usage = """
         Sparc.Producer — writes fixed-size messages into a cross-process SPSC ring buffer.
@@ -91,71 +90,29 @@ internal sealed class ProducerOptions
 
         while (reader.MoveNext(out string arg, out string? value))
         {
+            if (options.Common.TryParse(ref reader, arg, value))
+            {
+                if (options.ShowHelp)
+                {
+                    return options;
+                }
+
+                continue;
+            }
+
             switch (arg)
             {
-                case "-h":
-                case "--help":
-                    options.ShowHelp = true;
-                    return options;
-                case "--name":
-                    options.Name = reader.RequiredValue(arg, value);
-                    break;
-                case "--count":
-                    options.Count = ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: 0);
-                    break;
                 case "--size":
                     options.Size = (int)ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: MessageHeaderBytes, max: int.MaxValue);
                     break;
-                case "--capacity":
-                    options.Capacity = (int)ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: 1, max: int.MaxValue);
-                    break;
-                case "--slot-size":
-                    options.SlotSize = (int)ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: 1, max: int.MaxValue);
-                    break;
-                case "--type":
-                    options.Type = (int)ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: int.MinValue, max: int.MaxValue);
-                    break;
-                case "--open-timeout":
-                    options.OpenTimeout = TimeSpan.FromMilliseconds(ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: 1));
-                    break;
                 case "--full-timeout":
                     options.FullTimeout = TimeSpan.FromMilliseconds(ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: 1));
-                    break;
-                case "--delay-us":
-                    options.Delay = TimeSpan.FromMicroseconds(ArgumentReader.ParseLong(reader.RequiredValue(arg, value), arg, min: 0));
-                    break;
-                case "--takeover":
-                    options.Takeover = true;
-                    break;
-                case "--security":
-                    options.SecurityCurrentUser = SecurityFlag.ParseCurrentUser(reader.RequiredValue(arg, value), arg);
-                    break;
-                case "--section-handle":
-                    options.SectionHandle = reader.RequiredValue(arg, value);
-                    break;
-                case "--spin-only":
-                    options.SpinOnly = true;
-                    break;
-                case "--notify":
-                    options.Notify = true;
-                    break;
-                case "--recreate-stale":
-                    options.RecreateStale = true;
-                    break;
-                case "--require-existing":
-                    options.RequireExisting = true;
-                    break;
-                case "--quiet":
-                    options.Quiet = true;
                     break;
                 case "--advise":
                     options.Advise = true;
                     break;
                 case "--target-gib":
                     options.TargetGiB = ParsePositiveDouble(reader.RequiredValue(arg, value), arg);
-                    break;
-                case "--format":
-                    options.Format = OutputFormat.Parse(reader.RequiredValue(arg, value), arg);
                     break;
                 default:
                     throw new UsageException($"Unknown argument '{arg}'.");
@@ -169,43 +126,25 @@ internal sealed class ProducerOptions
 
         if (options.Advise)
         {
-            RingBufferLayout.ValidateGeometry(options.Capacity, options.EffectiveSlotSize);
-            if (options.EffectiveSlotSize - RingBufferLayout.MessageHeaderSize < options.Size)
-            {
-                throw new UsageException(
-                    $"Slot size {options.EffectiveSlotSize} cannot hold a {options.Size}-byte payload " +
-                    $"(maximum is {options.EffectiveSlotSize - RingBufferLayout.MessageHeaderSize}).");
-            }
-
+            options.ValidateGeometry();
             return options;
         }
 
-        if (options.Name.Length == 0 && options.SectionHandle is null)
-        {
-            throw new UsageException("--name is required (or pass --section-handle).");
-        }
-
-        if (options.SectionHandle is not null && options.Notify)
-        {
-            throw new UsageException(
-                "--notify needs a named region both endpoints can derive a signal name from; " +
-                "it cannot be combined with --section-handle.");
-        }
-
-        if (options.SpinOnly && options.Notify)
-        {
-            throw new UsageException("--spin-only and --notify are mutually exclusive.");
-        }
-
-        RingBufferLayout.ValidateGeometry(options.Capacity, options.EffectiveSlotSize);
-        if (options.EffectiveSlotSize - RingBufferLayout.MessageHeaderSize < options.Size)
-        {
-            throw new UsageException(
-                $"Slot size {options.EffectiveSlotSize} cannot hold a {options.Size}-byte payload " +
-                $"(maximum is {options.EffectiveSlotSize - RingBufferLayout.MessageHeaderSize}).");
-        }
+        options.Common.Validate();
+        options.ValidateGeometry();
 
         return options;
+    }
+
+    private void ValidateGeometry()
+    {
+        RingBufferLayout.ValidateGeometry(Capacity, EffectiveSlotSize);
+        if (EffectiveSlotSize - RingBufferLayout.MessageHeaderSize < Size)
+        {
+            throw new UsageException(
+                $"Slot size {EffectiveSlotSize} cannot hold a {Size}-byte payload " +
+                $"(maximum is {EffectiveSlotSize - RingBufferLayout.MessageHeaderSize}).");
+        }
     }
 
     private static double ParsePositiveDouble(string text, string name)

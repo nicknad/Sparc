@@ -9,8 +9,10 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\CommandLineUtil.cs" Link="CommandLineUtil.cs" />
+    <Compile Include="..\Shared\CommonOptions.cs" Link="CommonOptions.cs" />
     <Compile Include="..\Shared\RingBufferExitCodes.cs" Link="RingBufferExitCodes.cs" />
     <Compile Include="..\Shared\SectionHandleTransfer.cs" Link="SectionHandleTransfer.cs" />
+    <Compile Include="..\Shared\SessionCliSupport.cs" Link="SessionCliSupport.cs" />
   </ItemGroup>
 
   <ItemGroup>

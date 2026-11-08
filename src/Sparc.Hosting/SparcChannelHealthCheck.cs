@@ -20,14 +20,22 @@ public sealed class SparcChannelHealthCheck(SparcChannelStatus status, SparcHeal
         List<string> unhealthy = [];
         List<string> degraded = [];
 
-        Evaluate("producer", options.RequireProducer, status.ProducerEndpoint, status.ProducerState, unhealthy, degraded);
-        Evaluate("consumer", options.RequireConsumer, status.ConsumerEndpoint, status.ConsumerState, unhealthy, degraded);
+        IProducerEndpoint? producer = status.ProducerEndpoint;
+        RingBufferEndpointState producerState = producer?.ProducerState ?? RingBufferEndpointState.NotPresent;
+        ProducerRunResult? producerResult = status.ProducerResult;
+
+        IConsumerEndpoint? consumer = status.ConsumerEndpoint;
+        RingBufferEndpointState consumerState = consumer?.ConsumerState ?? RingBufferEndpointState.NotPresent;
+        ConsumerRunResult? consumerResult = status.ConsumerResult;
+
+        Evaluate("producer", options.RequireProducer, producer is not null, producerState, unhealthy, degraded);
+        Evaluate("consumer", options.RequireConsumer, consumer is not null, consumerState, unhealthy, degraded);
 
         Dictionary<string, object> data = new(StringComparer.Ordinal)
         {
             ["channel"] = status.Name,
-            ["producerState"] = status.ProducerState.ToString(),
-            ["consumerState"] = status.ConsumerState.ToString(),
+            ["producerState"] = producerState.ToString(),
+            ["consumerState"] = consumerState.ToString(),
         };
 
         if (status.FailureMessage is { } failure)
@@ -36,8 +44,8 @@ public sealed class SparcChannelHealthCheck(SparcChannelStatus status, SparcHeal
             data["failure"] = failure;
         }
 
-        AddSessionResult("producer", status.ProducerResult?.Reason, status.ProducerResult?.FailureMessage, unhealthy, data);
-        AddSessionResult("consumer", status.ConsumerResult?.Reason, status.ConsumerResult?.FailureMessage, unhealthy, data);
+        AddSessionResult("producer", producerResult?.Reason, producerResult?.FailureMessage, unhealthy, data);
+        AddSessionResult("consumer", consumerResult?.Reason, consumerResult?.FailureMessage, unhealthy, data);
 
         if (unhealthy.Count > 0)
         {
@@ -55,7 +63,7 @@ public sealed class SparcChannelHealthCheck(SparcChannelStatus status, SparcHeal
     private static void Evaluate(
         string role,
         bool required,
-        object? endpoint,
+        bool hasEndpoint,
         RingBufferEndpointState state,
         List<string> unhealthy,
         List<string> degraded)
@@ -65,7 +73,7 @@ public sealed class SparcChannelHealthCheck(SparcChannelStatus status, SparcHeal
             return;
         }
 
-        if (endpoint is null)
+        if (!hasEndpoint)
         {
             // Required but not opened yet: the peer has not appeared, which is a
             // degraded state, not a failure. Open failures record a failure

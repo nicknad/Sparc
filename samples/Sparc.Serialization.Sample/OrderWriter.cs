@@ -14,7 +14,6 @@ internal sealed class OrderWriter<TWriter>
 {
     public void Serialize(ref TWriter writer, Order order)
     {
-        ArgumentNullException.ThrowIfNull(order);
         BufferExtensions.WriteInt32(ref writer, order.Id);
         BufferExtensions.WriteString(ref writer, order.Customer);
 

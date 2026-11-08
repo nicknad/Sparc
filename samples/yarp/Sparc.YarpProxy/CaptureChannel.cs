@@ -14,7 +14,6 @@ internal sealed class CaptureChannel
         new BoundedChannelOptions(YarpCaptureProtocol.MaxQueuedCaptures)
         {
             SingleReader = true,
-            FullMode = BoundedChannelFullMode.Wait,
         });
 
     private long _dropped;

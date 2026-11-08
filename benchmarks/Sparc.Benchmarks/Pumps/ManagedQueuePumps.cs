@@ -46,7 +46,6 @@ public sealed class ChannelPump : TwoThreadPump
         {
             SingleReader = true,
             SingleWriter = true,
-            FullMode = BoundedChannelFullMode.Wait,
             AllowSynchronousContinuations = false,
         });
 

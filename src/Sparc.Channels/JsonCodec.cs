@@ -33,12 +33,6 @@ public sealed class JsonCodec<T> : ISparcCodec<T>
     public int Encode(T item, Span<byte> destination)
     {
         int limit = Math.Min(destination.Length, MaxSize);
-        if (limit <= 0)
-        {
-            throw new InvalidOperationException(
-                $"Encoded message exceeds the codec maximum of {MaxSize} bytes.");
-        }
-
         JsonWriterOptions writerOptions = _options is null
             ? default
             : new JsonWriterOptions
@@ -55,7 +49,6 @@ public sealed class JsonCodec<T> : ISparcCodec<T>
                 // Dispose flushes, so the overflow check must wrap the using.
                 using Utf8JsonWriter writer = new(output, writerOptions);
                 JsonSerializer.Serialize(writer, item, _options);
-                writer.Flush();
             }
             catch (EncodeOverflowException exception)
             {

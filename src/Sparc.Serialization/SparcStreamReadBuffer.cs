@@ -92,7 +92,8 @@ public ref struct SparcStreamReadBuffer
         ReadLease lease = LeaseNext(endpoint, timeout, cancellationToken);
         while (true)
         {
-            int flags = ChunkFraming.ReadFlags(lease.Payload);
+            int flags = ReadFlags(ref lease);
+
             if ((flags & ChunkFraming.FirstFlag) != 0)
             {
                 if (ChunkFraming.IsAborted(flags))
@@ -114,7 +115,8 @@ public ref struct SparcStreamReadBuffer
     {
         while (endpoint.TryBeginRead(out ReadLease lease))
         {
-            int flags = ChunkFraming.ReadFlags(lease.Payload);
+            int flags = ReadFlags(ref lease);
+
             if ((flags & ChunkFraming.FirstFlag) != 0)
             {
                 if (ChunkFraming.IsAborted(flags))
@@ -204,6 +206,13 @@ public ref struct SparcStreamReadBuffer
 
         if (sizeHint > _scratch.Length)
         {
+            int leaseAvailable = _hasLease ? _lease.Payload.Length - _leaseOffset : 0;
+            if (_endReached || (_leaseIsLast && scratchAvailable + leaseAvailable < sizeHint))
+            {
+                span = default;
+                return false;
+            }
+
             throw new InvalidOperationException(
                 $"sizeHint {sizeHint} exceeds the {_scratch.Length}-byte scratch buffer.");
         }
@@ -405,9 +414,8 @@ public ref struct SparcStreamReadBuffer
             throw new InvalidOperationException("No stream message is active.");
         }
 
-        Debug.Assert(!_hasLease && !_endReached);
         ReadLease lease = LeaseNext(_endpoint, _timeout, _cancellationToken);
-        int flags = ChunkFraming.ReadFlags(lease.Payload);
+        int flags = ReadFlags(ref lease);
 
         // A First chunk here means the producer restarted mid-message; mixing
         // the two messages silently would be worse than truncating.
@@ -477,6 +485,19 @@ public ref struct SparcStreamReadBuffer
 
         Debug.Assert(_scratchEnd - _scratchStart >= needed);
         return true;
+    }
+
+    private static int ReadFlags(ref ReadLease lease)
+    {
+        try
+        {
+            return ChunkFraming.ReadFlags(lease.Payload);
+        }
+        catch
+        {
+            lease.Dispose();
+            throw;
+        }
     }
 
     private void ThrowIfDisposed() =>

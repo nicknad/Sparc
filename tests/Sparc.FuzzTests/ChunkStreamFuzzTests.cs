@@ -12,30 +12,52 @@ public class ChunkStreamFuzzTests
     private const int Capacity = 128;
     private const int SlotSize = 64;
     private const int ChunkDataCapacity = SlotSize - RingBufferLayout.MessageHeaderSize - ChunkFraming.HeaderSize;
+    private const int KnownFlagsMask = ChunkFraming.FirstFlag | ChunkFraming.LastFlag | ChunkFraming.AbortFlag;
+
+    private static readonly Gen<byte[]> ValidChunks =
+        Gen.Select(Gen.Byte.Array[ChunkFraming.HeaderSize, 160], Gen.Int[0, KnownFlagsMask])
+            .Select(input =>
+            {
+                (byte[] bytes, int flags) = input;
+                if (bytes.Length == ChunkFraming.HeaderSize)
+                {
+                    flags |= ChunkFraming.LastFlag;
+                }
+
+                BinaryPrimitives.WriteInt32LittleEndian(bytes, flags);
+                return bytes;
+            });
 
     [Fact]
-    public void ArbitraryChunkBytesDecodeWithinTheDocumentedContract()
+    public void ValidChunkBytesDecodeWithinTheDocumentedContract()
     {
-        Gen.Byte.Array[0, 160].Sample(
+        ValidChunks.Sample(
             bytes =>
             {
-                int flags;
-                try
-                {
-                    flags = ChunkFraming.ReadFlags(bytes);
-                }
-                catch (RingBufferCorruptedException)
-                {
-                    return;
-                }
+                int flags = ChunkFraming.ReadFlags(bytes);
 
-                Assert.Equal(
-                    0,
-                    flags & ~(ChunkFraming.FirstFlag | ChunkFraming.LastFlag | ChunkFraming.AbortFlag));
+                Assert.Equal(0, flags & ~KnownFlagsMask);
                 if (bytes.Length == ChunkFraming.HeaderSize)
                 {
                     Assert.NotEqual(0, flags & ChunkFraming.LastFlag);
                 }
+            },
+            iter: 10_000);
+    }
+
+    [Fact]
+    public void ArbitraryChunkBytesWithUnknownFlagsAreRejected()
+    {
+        Gen.Byte.Array[0, 160].Sample(
+            bytes =>
+            {
+                if (bytes.Length >= ChunkFraming.HeaderSize)
+                {
+                    int flags = BinaryPrimitives.ReadInt32LittleEndian(bytes);
+                    BinaryPrimitives.WriteInt32LittleEndian(bytes, flags | 0x8);
+                }
+
+                Assert.Throws<RingBufferCorruptedException>(() => ChunkFraming.ReadFlags(bytes));
             },
             iter: 10_000);
     }
@@ -101,6 +123,8 @@ public class ChunkStreamFuzzTests
                         cancellationToken: TestContext.Current.CancellationToken);
                     if (started)
                     {
+                        Assert.NotEqual(0, flags & ChunkFraming.FirstFlag);
+                        Assert.Equal(0, flags & ~KnownFlagsMask);
                         buffer.Dispose();
                     }
                     else

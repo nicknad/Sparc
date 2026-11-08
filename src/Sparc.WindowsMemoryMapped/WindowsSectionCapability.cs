@@ -14,12 +14,12 @@ namespace Sparc.WindowsMemoryMapped;
 /// there is no name in the OS namespace to guess. The DACL from an optional
 /// <see cref="WindowsSectionSecurity"/> still applies as defence in depth.
 /// </para>
-/// <para>Dispose the capability after the transfer; it closes the handle and releases the local view.</para>
+/// <para>Dispose the capability after the transfer; it closes the handle and releases a local view that was not taken.</para>
 /// </remarks>
 public sealed class WindowsSectionCapability : IDisposable
 {
     private readonly SafeFileHandle _handle;
-    private readonly WindowsSectionMemoryRegion _region;
+    private WindowsSectionMemoryRegion? _region;
     private int _disposed;
 
     internal WindowsSectionCapability(SafeFileHandle handle, WindowsSectionMemoryRegion region)
@@ -34,12 +34,18 @@ public sealed class WindowsSectionCapability : IDisposable
     /// </summary>
     public SafeFileHandle Handle => _handle;
 
+    /// <summary>A read/write view of the section for this process.</summary>
+    public IIpcMemoryRegion Region =>
+        Volatile.Read(ref _region) ?? throw new ObjectDisposedException(nameof(WindowsSectionCapability));
+
     /// <summary>
-    /// A read/write view of the section for this process. Adopting it into an
-    /// endpoint transfers ownership of the view; the capability still closes
-    /// the section handle on <see cref="Dispose"/>.
+    /// Transfers ownership of the local view to the caller. The capability will
+    /// no longer release it on <see cref="Dispose"/>; only the section handle is
+    /// still owned.
     /// </summary>
-    public IIpcMemoryRegion Region => _region;
+    public IIpcMemoryRegion TakeRegion() =>
+        Interlocked.Exchange(ref _region, null)
+            ?? throw new ObjectDisposedException(nameof(WindowsSectionCapability));
 
     /// <inheritdoc />
     public void Dispose()
@@ -49,7 +55,7 @@ public sealed class WindowsSectionCapability : IDisposable
             return;
         }
 
-        _region.Dispose();
+        Interlocked.Exchange(ref _region, null)?.Dispose();
         _handle.Dispose();
     }
 }

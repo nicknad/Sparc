@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.RegularExpressions;
 using Sparc.Benchmarks.Pumps;
 using Sparc.Client;
 using Sparc.Core;
@@ -20,30 +19,6 @@ namespace Sparc.Benchmarks;
 /// </summary>
 internal static class LatencyRunner
 {
-    private static readonly TimeSpan RegexTimeout = TimeSpan.FromSeconds(1);
-
-    private static readonly Regex ProducerPattern = new(
-        @"produced=(?<count>\d+) .* throughput=(?<throughput>\d+) msg/s dataThroughput=(?<mib>[\d.]+) MiB/s",
-        RegexOptions.Compiled,
-        RegexTimeout);
-
-    private static readonly Regex ConsumerPattern = new(
-        @"consumed=(?<count>\d+) bytes=(?<bytes>\d+) .* throughput=(?<throughput>\d+) msg/s dataThroughput=(?<mib>[\d.]+) MiB/s",
-        RegexOptions.Compiled,
-        RegexTimeout);
-
-    private static readonly Regex ProducerReadyPattern = new(
-        @"capacity=(?<capacity>\d+) slotSize=(?<slot>\d+)",
-        RegexOptions.Compiled,
-        RegexTimeout);
-
-    private static readonly Regex LatencyPattern = new(
-        @"min=(?<min>[\d.]+) mean=(?<mean>[\d.]+) p50=(?<p50>[\d.]+) p90=(?<p90>[\d.]+) " +
-        @"p95=(?<p95>[\d.]+) p99=(?<p99>[\d.]+) p99\.9=(?<p99_9>[\d.]+) max=(?<max>[\d.]+) " +
-        @"\(n=(?<n>\d+)\)",
-        RegexOptions.Compiled,
-        RegexTimeout);
-
     public static void Run(string[] args)
     {
         string transport = "array";
@@ -250,10 +225,13 @@ internal static class LatencyRunner
         sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.P99)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(8));
         sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.P999)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(8));
         sb.Append(" | ").Append(Median(runs.Select(r => r.Latency.Max)).ToString("F2", CultureInfo.InvariantCulture).PadLeft(10));
-        sb.Append(" | ").Append(FormattableString.Invariant($"{producerCpu:F0}/{consumerCpu:F0} %"));
+        sb.Append(" | ").Append(FormatCpu(producerCpu)).Append('/').Append(FormatCpu(consumerCpu)).Append(" %");
         sb.Append(" |");
         return sb.ToString();
     }
+
+    private static string FormatCpu(double value) =>
+        double.IsNaN(value) ? "n/a" : value.ToString("F0", CultureInfo.InvariantCulture);
 
     private static void ValidateRepeats(int repeats) =>
         ArgumentOutOfRangeException.ThrowIfLessThan(repeats, 1);
@@ -378,16 +356,14 @@ internal static class LatencyRunner
         }
 
         return new CrossProcessRun(
-            ParseProducerOutput(producerOut.Result, capacity, slotSize, size),
+            ParseProducerOutput(producerOut.Result),
             ParseConsumerOutput(consumerOut.Result),
             CpuPercent(producer),
             CpuPercent(consumer));
     }
 
-    private static ProducerSample ParseProducerOutput(string output, int capacity, int slotSize, int payloadSize)
+    private static ProducerSample ParseProducerOutput(string output)
     {
-        // Machine-readable output first; the human summary stays as fallback for
-        // older builds or --format text runs.
         if (SessionSummaries.TryParseProducer(output, out ProducerSummary? summary) && summary is not null)
         {
             return new ProducerSample(
@@ -398,36 +374,11 @@ internal static class LatencyRunner
                 summary.SlotSize);
         }
 
-        Match match = ProducerPattern.Match(output);
-        if (!match.Success)
-        {
-            throw new InvalidOperationException($"Could not parse producer output:{Environment.NewLine}{output}");
-        }
-
-        // The producer prints the geometry it actually created; fall back to the
-        // requested values if the line is missing (for example a quiet build).
-        Match ready = ProducerReadyPattern.Match(output);
-        int actualCapacity = ready.Success &&
-            int.TryParse(ready.Groups["capacity"].Value, CultureInfo.InvariantCulture, out int parsedCapacity)
-                ? parsedCapacity
-                : capacity;
-        int actualSlotSize = ready.Success &&
-            int.TryParse(ready.Groups["slot"].Value, CultureInfo.InvariantCulture, out int parsedSlot)
-                ? parsedSlot
-                : slotSize > 0 ? slotSize : Math.Max(RingBufferLayout.DefaultSlotSize, payloadSize + RingBufferLayout.MessageHeaderSize);
-
-        return new ProducerSample(
-            long.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture),
-            double.Parse(match.Groups["throughput"].Value, CultureInfo.InvariantCulture),
-            double.Parse(match.Groups["mib"].Value, CultureInfo.InvariantCulture),
-            actualCapacity,
-            actualSlotSize);
+        throw new InvalidOperationException($"Could not parse producer output:{Environment.NewLine}{output}");
     }
 
     private static ConsumerSample ParseConsumerOutput(string output)
     {
-        // Machine-readable output first; the human summary stays as fallback for
-        // older builds or --format text runs.
         if (SessionSummaries.TryParseConsumer(output, out ConsumerSummary? summary) && summary is not null)
         {
             return new ConsumerSample(
@@ -446,31 +397,8 @@ internal static class LatencyRunner
                     summary.Latency.MaxUs));
         }
 
-        Match match = ConsumerPattern.Match(output);
-        Match latency = LatencyPattern.Match(output);
-        if (!match.Success || !latency.Success)
-        {
-            throw new InvalidOperationException($"Could not parse consumer output:{Environment.NewLine}{output}");
-        }
-
-        return new ConsumerSample(
-            long.Parse(match.Groups["count"].Value, CultureInfo.InvariantCulture),
-            double.Parse(match.Groups["throughput"].Value, CultureInfo.InvariantCulture),
-            double.Parse(match.Groups["mib"].Value, CultureInfo.InvariantCulture),
-            new LatencyStats(
-                long.Parse(latency.Groups["n"].Value, CultureInfo.InvariantCulture),
-                ParseDouble(latency, "min"),
-                ParseDouble(latency, "mean"),
-                ParseDouble(latency, "p50"),
-                ParseDouble(latency, "p90"),
-                ParseDouble(latency, "p95"),
-                ParseDouble(latency, "p99"),
-                ParseDouble(latency, "p99_9"),
-                ParseDouble(latency, "max")));
+        throw new InvalidOperationException($"Could not parse consumer output:{Environment.NewLine}{output}");
     }
-
-    private static double ParseDouble(Match match, string group) =>
-        double.Parse(match.Groups[group].Value, CultureInfo.InvariantCulture);
 
     private static double CpuPercent(Process process)
     {
@@ -481,7 +409,7 @@ internal static class LatencyRunner
         }
         catch (InvalidOperationException)
         {
-            return 0;
+            return double.NaN;
         }
     }
 

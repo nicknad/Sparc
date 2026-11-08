@@ -1,5 +1,4 @@
 using System.Buffers.Binary;
-using System.Diagnostics;
 using Sparc.Core;
 
 namespace Sparc.Serialization;
@@ -46,7 +45,6 @@ internal static class ChunkFraming
 
     public static unsafe void WriteFlags(byte* chunk, bool first, bool last, bool abort = false)
     {
-        Debug.Assert(chunk != null);
         BinaryPrimitives.WriteInt32LittleEndian(
             new Span<byte>(chunk, HeaderSize),
             (first ? FirstFlag : 0) | (last ? LastFlag : 0) | (abort ? AbortFlag : 0));

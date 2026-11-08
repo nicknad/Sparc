@@ -12,7 +12,7 @@ public class SpscRingBufferTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new SpscRingBuffer(0, 256));
         Assert.Throws<ArgumentOutOfRangeException>(() => new SpscRingBuffer(4, RingBufferLayout.MessageHeaderSize));
         Assert.Throws<ArgumentOutOfRangeException>(() => new SpscRingBuffer(4, RingBufferLayout.MessageHeaderSize - 1));
-        Assert.NotNull(new SpscRingBuffer(4, RingBufferLayout.MessageHeaderSize + 1));
+        _ = new SpscRingBuffer(4, RingBufferLayout.MessageHeaderSize + 1);
     }
 
     [Fact]

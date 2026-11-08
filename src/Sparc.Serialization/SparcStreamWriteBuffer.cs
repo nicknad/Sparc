@@ -114,6 +114,11 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
     /// <summary>Reports the bytes written into the span returned by <see cref="GetSpan"/>.</summary>
     public void Advance(int bytesWritten)
     {
+        if (_completed)
+        {
+            throw new InvalidOperationException("The message is already complete.");
+        }
+
         int remaining = ChunkDataCapacity - _used;
         if (bytesWritten < 0 || bytesWritten > remaining)
         {
@@ -169,7 +174,6 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
             if (_hasChunk)
             {
                 _endpoint.AbandonWrite();
-                _hasChunk = false;
                 ReleaseChunk();
             }
 
@@ -217,7 +221,6 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
         ChunkFraming.WriteFlags(_chunk, _firstOfMessage, last, abort);
         _endpoint.CommitWrite(ChunkFraming.HeaderSize + _used);
         _firstOfMessage = false;
-        _hasChunk = false;
         _publishedAny = true;
         ReleaseChunk();
     }
@@ -226,5 +229,6 @@ public unsafe struct SparcStreamWriteBuffer : IWriteBuffer
     {
         _chunk = null;
         _used = 0;
+        _hasChunk = false;
     }
 }

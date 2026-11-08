@@ -90,7 +90,8 @@ public sealed class NotificationModeAnalyzer : DiagnosticAnalyzer
             operation = conversion.Operand;
         }
 
-        return operation is ILiteralOperation { ConstantValue: { HasValue: true, Value: null } };
+        return operation is IDefaultValueOperation
+            || operation.ConstantValue is { HasValue: true, Value: null };
     }
 
     private static bool IsNotificationEnum(IOperation operation) =>

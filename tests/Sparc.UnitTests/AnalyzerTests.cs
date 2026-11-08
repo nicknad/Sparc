@@ -87,7 +87,8 @@ public class AnalyzerTests
 
         ImmutableArray<Diagnostic> diagnostics = await GetDiagnosticsAsync(Source);
 
-        Assert.Single(diagnostics);
+        Diagnostic diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(NotificationModeAnalyzer.DiagnosticId, diagnostic.Id);
     }
 
     [Fact]

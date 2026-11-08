@@ -42,12 +42,16 @@ public sealed class TransferCoordinator
                 return false;
             }
 
+            if (!_requests.Writer.TryWrite(count))
+            {
+                return false;
+            }
+
             _phase = "running";
             _producer = null;
             _consumer = null;
+            return true;
         }
-
-        return _requests.Writer.TryWrite(count);
     }
 
     public ValueTask<int> WaitForRequestAsync(CancellationToken cancellationToken) =>
@@ -60,6 +64,17 @@ public sealed class TransferCoordinator
             _producer = producer;
             _consumer = consumer;
             _phase = "completed";
+        }
+    }
+
+    public void Reset()
+    {
+        lock (_gate)
+        {
+            if (string.Equals(_phase, "running", StringComparison.Ordinal))
+            {
+                _phase = "idle";
+            }
         }
     }
 

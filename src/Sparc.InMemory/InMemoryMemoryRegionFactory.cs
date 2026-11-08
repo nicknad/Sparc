@@ -58,11 +58,14 @@ public sealed class InMemoryMemoryRegionFactory : IIpcMemoryRegionFactory
                 return new Region(name, existing, isCreator: false);
             }
 
-            byte[] fresh = Allocate(size);
+            byte[] fresh = Allocate(size, out GCHandle pin);
             if (_regions.TryAdd(name, fresh))
             {
+                _pins.Add(pin);
                 return new Region(name, fresh, isCreator: true);
             }
+
+            pin.Free();
 
             // Lost the create race: join the winner on the next loop; if that
             // winner was concurrently reset, create again rather than ever
@@ -115,10 +118,10 @@ public sealed class InMemoryMemoryRegionFactory : IIpcMemoryRegionFactory
         }
     }
 
-    private byte[] Allocate(long size)
+    private byte[] Allocate(long size, out GCHandle pin)
     {
         byte[] buffer = new byte[size];
-        _pins.Add(GCHandle.Alloc(buffer, GCHandleType.Pinned));
+        pin = GCHandle.Alloc(buffer, GCHandleType.Pinned);
         return buffer;
     }
 

@@ -6,25 +6,47 @@ namespace Sparc.FuzzTests;
 
 public class SlotFramingFuzzTests
 {
-    private static readonly Gen<byte[]> Slots = Gen.Byte.Array[RingBufferLayout.DefaultSlotSize];
+    private const int MaxPayloadSize = RingBufferLayout.DefaultSlotSize - RingBufferLayout.MessageHeaderSize;
+
+    private static readonly Gen<byte[]> ValidSlots =
+        Gen.Select(Gen.Byte.Array[RingBufferLayout.DefaultSlotSize], Gen.Int[0, MaxPayloadSize])
+            .Select(input =>
+            {
+                (byte[] slot, int length) = input;
+                BinaryPrimitives.WriteInt32LittleEndian(slot, length);
+                return slot;
+            });
+
+    private static readonly Gen<int> InvalidLengths =
+        Gen.Int.Select(value => value < 0 ? value : (value % (MaxPayloadSize + 1)) + MaxPayloadSize + 1);
+
+    private static readonly Gen<byte[]> InvalidSlots =
+        Gen.Select(Gen.Byte.Array[RingBufferLayout.DefaultSlotSize], InvalidLengths)
+            .Select(input =>
+            {
+                (byte[] slot, int length) = input;
+                BinaryPrimitives.WriteInt32LittleEndian(slot, length);
+                return slot;
+            });
 
     [Fact]
-    public void ArbitrarySlotBytesEitherThrowCorruptionOrDecodeWithinBounds()
+    public void ValidSlotHeadersDecodeWithinBounds()
     {
-        Slots.Sample(
+        ValidSlots.Sample(
             slot =>
             {
-                try
-                {
-                    int length = SlotFraming.ReadHeader(slot, out int type);
-                    Assert.InRange(length, 0, slot.Length - RingBufferLayout.MessageHeaderSize);
-                    Assert.Equal(BinaryPrimitives.ReadInt32LittleEndian(slot.AsSpan(sizeof(int))), type);
-                }
-                catch (RingBufferCorruptedException)
-                {
-                    return;
-                }
+                int length = SlotFraming.ReadHeader(slot, out int type);
+                Assert.InRange(length, 0, slot.Length - RingBufferLayout.MessageHeaderSize);
+                Assert.Equal(BinaryPrimitives.ReadInt32LittleEndian(slot.AsSpan(sizeof(int))), type);
             },
+            iter: 10_000);
+    }
+
+    [Fact]
+    public void InvalidSlotLengthsAreRejected()
+    {
+        InvalidSlots.Sample(
+            slot => Assert.Throws<RingBufferCorruptedException>(() => SlotFraming.ReadHeader(slot, out _)),
             iter: 10_000);
     }
 

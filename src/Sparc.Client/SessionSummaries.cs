@@ -141,7 +141,7 @@ public static class SessionSummaries
             $"\"messagesPerSecondAtTarget\":{(advice.MessagesPerSecondAtTarget.HasValue ? advice.MessagesPerSecondAtTarget.Value.ToString("G17", CultureInfo.InvariantCulture) : "null")}}}");
     }
 
-    /// <summary>Tries to find and parse a producer summary in CLI output (JSON line first, whole text fallback).</summary>
+    /// <summary>Tries to find and parse a producer summary in CLI output by scanning for a JSON line.</summary>
     public static bool TryParseProducer(string text, out ProducerSummary? summary)
     {
         summary = null;
@@ -180,7 +180,7 @@ public static class SessionSummaries
         }
     }
 
-    /// <summary>Tries to find and parse a consumer summary in CLI output (JSON line first, whole text fallback).</summary>
+    /// <summary>Tries to find and parse a consumer summary in CLI output by scanning for a JSON line.</summary>
     public static bool TryParseConsumer(string text, out ConsumerSummary? summary)
     {
         summary = null;

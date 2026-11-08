@@ -57,8 +57,8 @@ public sealed class GeometryAnalyzer : DiagnosticAnalyzer
         }
 
         // Signatures: (factory, name, capacity = 1024, slotSize = 256, ...).
-        CheckCapacity(context, ArgumentLiteral(invocation.Arguments, "capacity", 2));
-        CheckSlotSize(context, ArgumentLiteral(invocation.Arguments, "slotSize", 3));
+        CheckCapacity(context, ArgumentLiteral(invocation.Arguments, "capacity"));
+        CheckSlotSize(context, ArgumentLiteral(invocation.Arguments, "slotSize"));
     }
 
     private static void AnalyzeObjectCreation(OperationAnalysisContext context)
@@ -70,15 +70,14 @@ public sealed class GeometryAnalyzer : DiagnosticAnalyzer
         }
 
         // SpscRingBuffer(int capacity, int slotSize).
-        CheckCapacity(context, ArgumentLiteral(creation.Arguments, "capacity", 0));
-        CheckSlotSize(context, ArgumentLiteral(creation.Arguments, "slotSize", 1));
+        CheckCapacity(context, ArgumentLiteral(creation.Arguments, "capacity"));
+        CheckSlotSize(context, ArgumentLiteral(creation.Arguments, "slotSize"));
     }
 
-    private static int? ArgumentLiteral(ImmutableArray<IArgumentOperation> arguments, string name, int position)
+    private static int? ArgumentLiteral(ImmutableArray<IArgumentOperation> arguments, string name)
     {
-        IArgumentOperation? byName = arguments.FirstOrDefault(a =>
+        IArgumentOperation? argument = arguments.FirstOrDefault(a =>
             string.Equals(a.Parameter?.Name, name, StringComparison.Ordinal));
-        IArgumentOperation? argument = byName ?? (position < arguments.Length ? arguments[position] : null);
         return LiteralInt(argument?.Value);
     }
 

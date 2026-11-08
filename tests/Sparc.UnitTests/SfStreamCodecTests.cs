@@ -39,17 +39,7 @@ public class SfStreamCodecTests
             (ref SparcStreamWriteBuffer buffer, byte[] _) => throw new InvalidOperationException("boom"),
             ReadBytes);
 
-        bool threw = false;
-        try
-        {
-            failing.Write(pair.Writer, []);
-        }
-        catch (InvalidOperationException)
-        {
-            threw = true;
-        }
-
-        Assert.True(threw);
+        Assert.Throws<InvalidOperationException>(() => failing.Write(pair.Writer, []));
         Assert.Throws<RingBufferTimeoutException>(
             () => pair.Reader.ReadMessage(
                 new byte[16], out _, TimeSpan.FromMilliseconds(10), TestContext.Current.CancellationToken));
@@ -67,17 +57,7 @@ public class SfStreamCodecTests
         using Pair pair = new();
         SfStreamCodec<byte[]> failing = new(1, FailAfterBytes, ReadBytes);
 
-        bool threw = false;
-        try
-        {
-            failing.Write(pair.Writer, []);
-        }
-        catch (InvalidOperationException)
-        {
-            threw = true;
-        }
-
-        Assert.True(threw);
+        Assert.Throws<InvalidOperationException>(() => failing.Write(pair.Writer, []));
         Assert.Throws<RingBufferCorruptedException>(
             () => pair.Reader.ReadMessage(
                 new byte[512], out _, TimeSpan.FromMilliseconds(10), TestContext.Current.CancellationToken));
@@ -104,17 +84,8 @@ public class SfStreamCodecTests
 
         codec.Write(pair.Writer, new Point(1, 2));
 
-        bool threw = false;
-        try
-        {
-            codec.Read(pair.Reader, new byte[16], cancellationToken: TestContext.Current.CancellationToken);
-        }
-        catch (RingBufferCorruptedException)
-        {
-            threw = true;
-        }
-
-        Assert.True(threw);
+        Assert.Throws<RingBufferCorruptedException>(
+            () => codec.Read(pair.Reader, new byte[16], cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]

@@ -17,15 +17,56 @@ public sealed class SparcChannelStatus(string name)
     private IProducerEndpoint? _producer;
     private IConsumerEndpoint? _consumer;
     private string? _failure;
+#if NET9_0_OR_GREATER
+    private readonly System.Threading.Lock _resultLock = new();
+#else
+    private readonly object _resultLock = new();
+#endif
+    private ProducerRunResult? _producerResult;
+    private ConsumerRunResult? _consumerResult;
 
     /// <summary>Region name of the default channel.</summary>
     public string Name { get; } = name;
 
     /// <summary>Result of the last producer session, when the session hosted one.</summary>
-    public ProducerRunResult? ProducerResult { get; internal set; }
+    public ProducerRunResult? ProducerResult
+    {
+        get
+        {
+            lock (_resultLock)
+            {
+                return _producerResult;
+            }
+        }
+
+        internal set
+        {
+            lock (_resultLock)
+            {
+                _producerResult = value;
+            }
+        }
+    }
 
     /// <summary>Result of the last consumer session, when the session hosted one.</summary>
-    public ConsumerRunResult? ConsumerResult { get; internal set; }
+    public ConsumerRunResult? ConsumerResult
+    {
+        get
+        {
+            lock (_resultLock)
+            {
+                return _consumerResult;
+            }
+        }
+
+        internal set
+        {
+            lock (_resultLock)
+            {
+                _consumerResult = value;
+            }
+        }
+    }
 
     /// <summary>Last failure description reported by a hosted service, if any.</summary>
     public string? FailureMessage => Volatile.Read(ref _failure);

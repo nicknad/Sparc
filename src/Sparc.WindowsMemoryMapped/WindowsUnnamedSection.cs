@@ -62,7 +62,6 @@ public static class WindowsUnnamedSection
                 WindowsSectionMemoryRegion region = new(
                     UnnamedRegionName,
                     sectionHandle: null,
-                    ownsHandle: false,
                     view,
                     size,
                     isCreator: true);
@@ -100,7 +99,6 @@ public static class WindowsUnnamedSection
                 return new WindowsSectionMemoryRegion(
                     UnnamedRegionName,
                     sectionHandle: null,
-                    ownsHandle: false,
                     view,
                     size,
                     isCreator: false);

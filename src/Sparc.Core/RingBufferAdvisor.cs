@@ -53,7 +53,6 @@ public static class RingBufferAdvisor
         int slotSizeOverride = 0,
         double? targetGiBs = null)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(payloadSize, 0);
         if (targetGiBs is <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(targetGiBs), targetGiBs, "Target rate must be positive.");
@@ -112,25 +111,18 @@ public static class RingBufferAdvisor
             warnings.Add(alignment);
         }
 
-        try
+        long regionBytes = RingBufferLayout.RequiredSize(capacity, slotSize);
+        if (regionBytes > OversizeBytes)
         {
-            long regionBytes = RingBufferLayout.RequiredSize(capacity, slotSize);
-            if (regionBytes > OversizeBytes)
-            {
-                warnings.Add(
-                    $"Region is {regionBytes / (1024.0 * 1024.0):F1} MiB: it exceeds a typical LLC, so every " +
-                    "slot line pays DRAM + read-for-ownership. Shrink --capacity, or pass --no-verify-payload.");
-            }
-            else if (regionBytes > LlcResidentBytes)
-            {
-                warnings.Add(
-                    $"Region is {regionBytes / (1024.0 * 1024.0):F1} MiB: it exceeds a typical 4 MiB LLC slice. " +
-                    "Compare footprints with the Region column before blaming payload size.");
-            }
+            warnings.Add(
+                $"Region is {regionBytes / (1024.0 * 1024.0):F1} MiB: it exceeds a typical LLC, so every " +
+                "slot line pays DRAM + read-for-ownership. Shrink --capacity, or pass --no-verify-payload.");
         }
-        catch (OverflowException)
+        else if (regionBytes > LlcResidentBytes)
         {
-            warnings.Add("Region size overflows: capacity × slotSize does not fit in memory.");
+            warnings.Add(
+                $"Region is {regionBytes / (1024.0 * 1024.0):F1} MiB: it exceeds a typical 4 MiB LLC slice. " +
+                "Compare footprints with the Region column before blaming payload size.");
         }
 
         return warnings;

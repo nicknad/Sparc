@@ -122,9 +122,9 @@ public sealed class WindowsNamedMemoryMappedRegionFactory : IIpcMemoryRegionFact
         return false;
     }
 
-    private static void EnsureSupported()
+    private void EnsureSupported()
     {
-        if (!OperatingSystem.IsWindows())
+        if (!IsSupported)
         {
             throw new IpcPlatformNotSupportedException(
                 "Sparc.WindowsMemoryMapped uses named memory-mapped files, which .NET supports on Windows only. " +

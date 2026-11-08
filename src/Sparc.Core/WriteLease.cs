@@ -16,8 +16,6 @@ public ref struct WriteLease
     {
         _endpoint = endpoint;
         _payload = payload;
-        _abandoned = false;
-        _done = false;
     }
 
     /// <summary>Writable view of exactly the reserved length inside the slot.</summary>

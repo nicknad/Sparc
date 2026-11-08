@@ -39,13 +39,21 @@ internal static class RegressionRunner
         double tolerance = 0.50;
         for (int i = 0; i < args.Length; i++)
         {
-            if (args[i] is "--tolerance" && i + 1 < args.Length)
+            if (args[i] is "--tolerance")
             {
-                tolerance = double.Parse(args[++i], CultureInfo.InvariantCulture);
+                if (i + 1 >= args.Length ||
+                    !double.TryParse(args[i + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
+                {
+                    Console.Error.WriteLine("--tolerance requires a numeric value in (0, 1].");
+                    return 2;
+                }
+
+                tolerance = parsed;
+                i++;
             }
         }
 
-        if (tolerance is <= 0 or > 1)
+        if (!double.IsFinite(tolerance) || tolerance is <= 0 or > 1)
         {
             Console.Error.WriteLine("--tolerance must be in (0, 1].");
             return 2;

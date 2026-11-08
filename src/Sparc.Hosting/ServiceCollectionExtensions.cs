@@ -102,15 +102,8 @@ public static class SparcServiceCollectionExtensions
         ProducerSessionOptions options = new();
         configure?.Invoke(options);
 
-        // Guard the hosted-service forwarder so a duplicate AddSparcProducerSession
-        // cannot start the same session twice.
-        bool hosted = services.Any(descriptor => descriptor.ServiceType == typeof(SparcProducerSessionService));
         services.TryAddSingleton(options);
-        services.TryAddSingleton<SparcProducerSessionService>();
-        if (!hosted)
-        {
-            services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcProducerSessionService>());
-        }
+        AddHostedSparcService<SparcProducerSessionService>(services);
 
         return services;
     }
@@ -132,15 +125,8 @@ public static class SparcServiceCollectionExtensions
             options.IdleTimeout = Timeout.InfiniteTimeSpan;
         }
 
-        // Guard the hosted-service forwarder so a duplicate AddSparcConsumerSession
-        // cannot start the same session twice.
-        bool hosted = services.Any(descriptor => descriptor.ServiceType == typeof(SparcConsumerSessionService));
         services.TryAddSingleton(options);
-        services.TryAddSingleton<SparcConsumerSessionService>();
-        if (!hosted)
-        {
-            services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcConsumerSessionService>());
-        }
+        AddHostedSparcService<SparcConsumerSessionService>(services);
 
         return services;
     }
@@ -152,13 +138,7 @@ public static class SparcServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         RequireIpc(services);
 
-        bool hosted = services.Any(descriptor => descriptor.ServiceType == typeof(SparcProducerWorkerService<TWorker>));
-        services.TryAddSingleton<TWorker>();
-        services.TryAddSingleton<SparcProducerWorkerService<TWorker>>();
-        if (!hosted)
-        {
-            services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcProducerWorkerService<TWorker>>());
-        }
+        AddHostedSparcWorker<TWorker, SparcProducerWorkerService<TWorker>>(services);
 
         return services;
     }
@@ -170,13 +150,7 @@ public static class SparcServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         RequireIpc(services);
 
-        bool hosted = services.Any(descriptor => descriptor.ServiceType == typeof(SparcConsumerWorkerService<TWorker>));
-        services.TryAddSingleton<TWorker>();
-        services.TryAddSingleton<SparcConsumerWorkerService<TWorker>>();
-        if (!hosted)
-        {
-            services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<SparcConsumerWorkerService<TWorker>>());
-        }
+        AddHostedSparcWorker<TWorker, SparcConsumerWorkerService<TWorker>>(services);
 
         return services;
     }
@@ -195,6 +169,25 @@ public static class SparcServiceCollectionExtensions
         return services;
     }
 
+    private static void AddHostedSparcService<TService>(IServiceCollection services)
+        where TService : class, IHostedService
+    {
+        bool hosted = services.Any(descriptor => descriptor.ServiceType == typeof(TService));
+        services.TryAddSingleton<TService>();
+        if (!hosted)
+        {
+            services.AddSingleton<IHostedService>(provider => provider.GetRequiredService<TService>());
+        }
+    }
+
+    private static void AddHostedSparcWorker<TWorker, TService>(IServiceCollection services)
+        where TWorker : class
+        where TService : class, IHostedService
+    {
+        services.TryAddSingleton<TWorker>();
+        AddHostedSparcService<TService>(services);
+    }
+
     private static IServiceCollection AddSparcChannelCore(IServiceCollection services, SparcChannelOptions options)
     {
         RequireIpc(services);
@@ -208,7 +201,8 @@ public static class SparcServiceCollectionExtensions
         options.Validate();
 
         services.TryAddSingleton(options);
-        services.TryAddSingleton(new SparcChannelStatus(options.Name));
+        services.TryAddSingleton(provider =>
+            new SparcChannelStatus(provider.GetRequiredService<SparcChannelOptions>().Name));
         return services;
     }
 

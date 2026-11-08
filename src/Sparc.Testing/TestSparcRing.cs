@@ -50,13 +50,13 @@ public sealed class TestSparcRing : IDisposable
     /// <param name="timeProvider">Clock for sessions; <c>FakeTimeProvider</c> recommended.</param>
     /// <param name="name">Region name; a unique name is generated when omitted.</param>
     public static TestSparcRing Create(
-        int capacity = 1024,
-        int slotSize = 256,
+        int capacity = RingBufferLayout.DefaultCapacity,
+        int slotSize = RingBufferLayout.DefaultSlotSize,
         TimeProvider? timeProvider = null,
         string? name = null)
     {
         InMemoryMemoryRegionFactory factory = new();
-        string regionName = name ?? "sparc-test-" + Guid.NewGuid().ToString("N");
+        string regionName = name ?? TestRegionName.Create();
         IProducerEndpoint producer = SparcRing.OpenProducer(factory, regionName, capacity, slotSize);
         try
         {

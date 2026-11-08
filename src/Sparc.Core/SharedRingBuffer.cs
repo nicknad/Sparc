@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Sparc;
@@ -85,10 +84,7 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
         // would look like "data available" and read an unpublished slot. After
         // seeding, the consumer invariant cachedTail >= head and the producer
         // invariant cachedHead <= head both hold.
-        _cachedHead = Volatile.Read(ref region.HeadRef);
-        _cachedTail = Volatile.Read(ref region.TailRef);
-        _localHead = _cachedHead;
-        _localTail = _cachedTail;
+        ResyncCursors();
         Debug.Assert(_cachedTail >= _cachedHead);
     }
 
@@ -173,9 +169,6 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
     /// <summary>Advisory state reported by the consumer.</summary>
     public RingBufferEndpointState ConsumerState => _region.ReadEndpointState(RingBufferEndpointRole.Consumer);
 
-    /// <summary>The underlying protocol region. Protocol-level; not part of the public surface.</summary>
-    internal RingBufferRegion Region => _region;
-
     /// <summary>
     /// Claims the given role. Throws <see cref="RingBufferRoleConflictException"/>
     /// when the role is already claimed by a live instance; pass
@@ -219,10 +212,7 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
                 // was unclaimed (e.g. takeover after a crash). Re-sync both the
                 // peer caches and the owned-cursor copies so the hot path starts
                 // from the live values.
-                _cachedHead = Volatile.Read(ref _region.HeadRef);
-                _cachedTail = Volatile.Read(ref _region.TailRef);
-                _localHead = _cachedHead;
-                _localTail = _cachedTail;
+                ResyncCursors();
                 return;
             }
         }
@@ -400,8 +390,7 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
         unsafe
         {
             Span<byte> slot = new(_slots + _pendingOffset, SlotSize);
-            BinaryPrimitives.WriteInt32LittleEndian(slot, length);
-            BinaryPrimitives.WriteInt32LittleEndian(slot[sizeof(int)..], _pendingType);
+            SlotFraming.WriteHeader(slot, length, _pendingType);
         }
 
         // Release: the caller's payload writes and the framing above must be
@@ -544,7 +533,6 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
     /// </summary>
     public void Write(ReadOnlySpan<byte> payload, int type = 0, CancellationToken cancellationToken = default)
     {
-        Debug.Assert(payload.Length <= MaxPayloadSize);
         long startTimestamp = Stopwatch.GetTimestamp();
         long timeoutTicks = WriteTimeoutSeconds * Stopwatch.Frequency;
         SpinWait spin = new();
@@ -725,6 +713,14 @@ internal sealed class SharedRingBuffer : IProducerEndpoint, IConsumerEndpoint
         {
             _region.Dispose();
         }
+    }
+
+    private void ResyncCursors()
+    {
+        _cachedHead = Volatile.Read(ref _region.HeadRef);
+        _cachedTail = Volatile.Read(ref _region.TailRef);
+        _localHead = _cachedHead;
+        _localTail = _cachedTail;
     }
 
     private void ThrowIfDisposed()

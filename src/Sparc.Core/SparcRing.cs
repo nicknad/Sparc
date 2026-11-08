@@ -23,10 +23,10 @@ namespace Sparc.Core;
 public static class SparcRing
 {
     /// <summary>Default number of slots. Must be a power of two.</summary>
-    public const int DefaultCapacity = 1024;
+    public const int DefaultCapacity = RingBufferLayout.DefaultCapacity;
 
     /// <summary>Default size of one slot in bytes.</summary>
-    public const int DefaultSlotSize = 256;
+    public const int DefaultSlotSize = RingBufferLayout.DefaultSlotSize;
 
     /// <summary>
     /// Creates the region if needed, joins it otherwise, claims the producer

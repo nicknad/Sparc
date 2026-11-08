@@ -56,16 +56,23 @@ public static class RegionName
             prefix = "sparc";
         }
 
-        // Strip anything that could never validate, then fit "<prefix>-<32 hex>".
-        string clean = prefix.Trim().Replace('\\', '-').Replace('/', '-');
-        const string suffix = "-00000000000000000000000000000000"; // 33 chars
-        if (clean.Length + suffix.Length > MaxLength)
+        string clean = Sanitize(prefix.Trim());
+        const int suffixLength = 33;
+        if (clean.Length + suffixLength > MaxLength)
         {
-            clean = clean[..(MaxLength - suffix.Length)];
+            clean = clean[..(MaxLength - suffixLength)];
         }
 
-        Validate(clean);
-        string name = $"{clean}-{Guid.NewGuid():N}";
-        return Validate(name);
+        return Validate($"{clean}-{Guid.NewGuid():N}");
     }
+
+    private static string Sanitize(string prefix) =>
+        string.Create(prefix.Length, prefix, static (span, value) =>
+        {
+            for (int i = 0; i < value.Length; i++)
+            {
+                char c = value[i];
+                span[i] = (c is '\\' or '/' or '\0' || char.IsControl(c)) ? '-' : c;
+            }
+        });
 }

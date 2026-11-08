@@ -67,21 +67,29 @@ public class SpscArrayConcurrencyTests(ITestOutputHelper output)
 
 public class SharedRingBufferConcurrencyTests(ITestOutputHelper output)
 {
-    private const long Total = 10_000_000;
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
 
-    [Fact]
-    public void TenMillionMessagesArriveInOrderAcrossTwoMappings()
+    [Theory]
+    [InlineData(10_000_000L, false)]
+    [InlineData(1_000_000L, true)]
+    public void MessagesStayOrderedAcrossTwoMappings(long messages, bool secured)
     {
         if (!OperatingSystem.IsWindows())
         {
-            return; // named memory-mapped files are Windows-only
+            Assert.Skip("Named memory-mapped files and section DACLs are Windows-only.");
         }
 
-        string name = "spsc-concurrency-" + Guid.NewGuid().ToString("N");
+        string name = (secured ? "spsc-secured-concurrency-" : "spsc-concurrency-")
+            + Guid.NewGuid().ToString("N");
         WindowsNamedMemoryMappedRegionFactory factory = new();
 
-        using SharedRingBuffer producerView = SharedRingBuffer.OpenOrCreate(factory, name, 1024, 256);
+        SharedRingBufferOptions? producerOptions = secured
+            ? new SharedRingBufferOptions { Security = WindowsSectionSecurity.CurrentUserOnly }
+            : null;
+
+        using SharedRingBuffer producerView = producerOptions is null
+            ? SharedRingBuffer.OpenOrCreate(factory, name, 1024, 256)
+            : SharedRingBuffer.OpenOrCreate(factory, name, 1024, 256, producerOptions);
         using SharedRingBuffer consumerView = SharedRingBuffer.OpenOrCreate(factory, name, 1024, 256);
 
         producerView.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
@@ -89,52 +97,14 @@ public class SharedRingBufferConcurrencyTests(ITestOutputHelper output)
 
         TransferRunner.Result result = TransferRunner.Run(
             new SharedTransferRing(producerView), new SharedTransferRing(consumerView),
-            Total, payloadSize: 64, Timeout);
+            messages, payloadSize: 64, Timeout);
 
         output.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"shared memory: {result.Consumed:N0} messages in {result.Elapsed.TotalSeconds:F3}s " +
+            $"{(secured ? "secured shared memory" : "shared memory")}: {result.Consumed:N0} messages in {result.Elapsed.TotalSeconds:F3}s " +
             $"= {result.MessagesPerSecond:N0} msg/s"));
 
-        Assert.Equal(Total, result.Consumed);
-        Assert.Equal(Total, producerView.TailSequence);
-        Assert.Equal(Total, consumerView.HeadSequence);
-    }
-
-    [Fact]
-    public void OneMillionMessagesStayOrderedAcrossSecuredMappings()
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            return; // section DACLs are Windows-only
-        }
-
-        const long Messages = 1_000_000;
-        string name = "spsc-secured-concurrency-" + Guid.NewGuid().ToString("N");
-        WindowsNamedMemoryMappedRegionFactory factory = new();
-
-        // The producer creates the section with a current-user-only DACL; the
-        // consumer joins without repeating the descriptor. The ring protocol is
-        // the same code path as the unsecured region.
-        using SharedRingBuffer producerView = SharedRingBuffer.OpenOrCreate(
-            factory, name, 1024, 256, new SharedRingBufferOptions
-            {
-                Security = WindowsSectionSecurity.CurrentUserOnly,
-            });
-        using SharedRingBuffer consumerView = SharedRingBuffer.OpenOrCreate(factory, name, 1024, 256);
-
-        producerView.Connect(RingBufferEndpointRole.Producer, cancellationToken: TestContext.Current.CancellationToken);
-        consumerView.Connect(RingBufferEndpointRole.Consumer, cancellationToken: TestContext.Current.CancellationToken);
-
-        TransferRunner.Result result = TransferRunner.Run(
-            new SharedTransferRing(producerView), new SharedTransferRing(consumerView),
-            Messages, payloadSize: 64, Timeout);
-
-        output.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"secured shared memory: {result.Consumed:N0} messages in {result.Elapsed.TotalSeconds:F3}s " +
-            $"= {result.MessagesPerSecond:N0} msg/s"));
-
-        Assert.Equal(Messages, result.Consumed);
-        Assert.Equal(Messages, producerView.TailSequence);
-        Assert.Equal(Messages, consumerView.HeadSequence);
+        Assert.Equal(messages, result.Consumed);
+        Assert.Equal(messages, producerView.TailSequence);
+        Assert.Equal(messages, consumerView.HeadSequence);
     }
 }
