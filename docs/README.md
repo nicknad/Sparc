@@ -19,8 +19,10 @@ This folder goes deeper than the top-level `README.md`:
 | [streaming.md](streaming.md) | Chunked messages larger than a slot (or the ring): wire format, `SparcStreamWriter`/`SparcStreamReader`, `SfStreamCodec<T>`, abort semantics. |
 | [testing.md](testing.md) | The `Sparc.Testing` harness: paired endpoints, fake time, timeout helpers. |
 | [how-it-works.md](how-it-works.md) | The full mechanism: region handshake, binary layout, ring algorithm, memory ordering, lease API, sessions, wait modes, crash semantics, platform implementations, tests. |
+| [statechart/README.md](statechart/README.md) | The endpoint and message lifecycle as a checked TLA+ statechart: the states, the crash paths, the rules TLC verified, and how to regenerate it. |
 | [performance-invariants.md](performance-invariants.md) | Every invariant that makes the measured performance possible, grouped by kind, each with its mechanism, where it lives in code, what it buys, and what breaks if violated. |
 | [benchmarking.md](benchmarking.md) | The benchmark harnesses, how to run them, measurement traps, current numbers, and the regression check. |
+| [csharp15-adoption.md](csharp15-adoption.md) | Why the libraries target `net11.0`/C# 15 only, which C# 15 features were evaluated and rejected, and the net8-vs-net11 measurement evidence. |
 
 Transport security and the threat model live in the top-level
 [README.md §7](../README.md#7-transport-security-and-isolation) and

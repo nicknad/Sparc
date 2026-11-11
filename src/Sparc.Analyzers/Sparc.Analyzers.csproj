@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>15.0</LangVersion>
     <RootNamespace>Sparc.Analyzers</RootNamespace>
     <IsPackable>true</IsPackable>
     <EnablePublicApiAnalyzers>false</EnablePublicApiAnalyzers>

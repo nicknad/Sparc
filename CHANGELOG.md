@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-11
+
 ### Added
 
 - **Transport-level security for Windows sections.** `IpcMemoryRegionSecurity`
@@ -133,6 +135,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   separate cache lines. The lease separation measured a 3.2x median message-rate
   gain in an interleaved same-process 64 B A/B (15/15 rounds); the cached-cursor
   padding was neutral within host noise.
+- **The libraries target `net11.0` only (C# 15).** `net8.0` was removed because
+  .NET 8 reached end of support on 2026-11-10. The language version is implied by
+  the target framework (`15.0`); the `netstandard2.0` analyzer pins `15.0`
+  explicitly. No C# 15 language feature was adopted: a site-by-site review found
+  none that improved performance or readability without a public API change.
+  Redundant `Microsoft.Extensions.*` references were removed now that the
+  framework provides them. See `docs/csharp15-adoption.md`.
 
 ## [1.0.0]
 
