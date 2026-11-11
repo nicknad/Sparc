@@ -42,8 +42,9 @@ See `docs/concept.md` and `docs/how-it-works.md` for guarantees, layout, and han
 
 ## 2. Usage in code
 
-Libraries target `net11.0` (C# 15). Pick `Sparc.Hosting` for DI, `Sparc.Channels`
-for a typed API, or `Sparc.Core` for raw zero-copy endpoints.
+Libraries target `net11.0`, which sets the language version to C# 15. Pick
+`Sparc.Hosting` for DI, `Sparc.Channels` for a typed API, or `Sparc.Core` for raw
+zero-copy endpoints.
 
 Producer process (hosted session):
 
