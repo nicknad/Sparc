@@ -2,13 +2,13 @@
 
 ## Supported versions
 
-Security fixes are applied to the latest released minor version. The 1.0 line
-is prepared but not yet published; until it is, report against `main`.
+Security fixes are applied to the latest released minor version. The 2.0 line
+is the current release.
 
 | Version | Supported |
 |---|---|
-| 1.0.x | yes |
-| < 1.0 | no |
+| 2.0.x | yes |
+| < 2.0 | no |
 
 ## Reporting a vulnerability
 

@@ -42,7 +42,7 @@ See `docs/concept.md` and `docs/how-it-works.md` for guarantees, layout, and han
 
 ## 2. Usage in code
 
-Libraries multi-target `net8.0;net11.0`. Pick `Sparc.Hosting` for DI, `Sparc.Channels`
+Libraries target `net11.0` (C# 15). Pick `Sparc.Hosting` for DI, `Sparc.Channels`
 for a typed API, or `Sparc.Core` for raw zero-copy endpoints.
 
 Producer process (hosted session):

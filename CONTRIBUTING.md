@@ -19,7 +19,7 @@ dotnet test  Sparc.slnx -c Release          # unit + concurrency + fuzz + proces
 dotnet build Sparc.Samples.slnx -c Release  # samples live in a separate solution
 ```
 
-The library targets `net8.0;net11.0`; apps, tests and benchmarks target
+The library targets `net11.0`; apps, tests and benchmarks target
 `net11.0`. Warnings are errors everywhere, and `Microsoft.CodeAnalysis.NetAnalyzers`
 plus `Meziantou.Analyzer` run on every build, so a clean local build is the
 first quality gate.
