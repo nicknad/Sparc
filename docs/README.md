@@ -22,7 +22,7 @@ This folder goes deeper than the top-level `README.md`:
 | [statechart/README.md](statechart/README.md) | The endpoint and message lifecycle as a checked TLA+ statechart: the states, the crash paths, the rules TLC verified, and how to regenerate it. |
 | [performance-invariants.md](performance-invariants.md) | Every invariant that makes the measured performance possible, grouped by kind, each with its mechanism, where it lives in code, what it buys, and what breaks if violated. |
 | [benchmarking.md](benchmarking.md) | The benchmark harnesses, how to run them, measurement traps, current numbers, and the regression check. |
-| [csharp15-adoption.md](csharp15-adoption.md) | Why the libraries target `net11.0`/C# 15 only, which C# 15 features were evaluated and rejected, and the net8-vs-net11 measurement evidence. |
+| [csharp15-adoption.md](csharp15-adoption.md) | Why the libraries target `net11.0` and C# 15, which C# 15 features the project evaluated and rejected, and the measurements behind the net8.0 and net11.0 comparison. |
 
 Transport security and the threat model live in the top-level
 [README.md §7](../README.md#7-transport-security-and-isolation) and
