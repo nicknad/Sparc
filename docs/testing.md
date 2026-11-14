@@ -51,6 +51,35 @@ the whole session timeline is controllable. Sessions still spin/sleep while the
 ring is full/empty; advance time until the state you are testing is reached
 rather than sleeping in the test.
 
+## Stop decisions need no clock
+
+A session's terminal event becomes a stop reason, a failure text and an
+outstanding count through one pure function inside `Sparc.Client`
+(`SessionStopDecision`, internal; `Sparc.UnitTests` sees it through
+`InternalsVisibleTo`). Because it takes the facts and nothing else, it is
+tested as a table - no region, no `TimeProvider`, no waiting:
+
+```csharp
+SessionStopDecision decision = SessionStopDecision.Resolve(new SessionStopInput
+{
+    Event = SessionTerminalEvent.Timeout,
+    Role = SessionRole.Producer,
+    Delivered = 4,
+    Requested = 100,
+    Timeout = TimeSpan.FromSeconds(30),
+    PeerState = RingBufferEndpointState.Running,
+});
+
+Assert.Equal(SessionStopReason.Timeout, decision.Reason);
+Assert.Equal(96L, decision.Outstanding);
+```
+
+`SessionStopDecisionTests` covers every terminal event for both roles, including
+the unbounded runs (`Count = 0`) whose text reports what was produced or
+received instead of what was unsent. `SessionTests` keeps driving real regions
+in real time: the two layers answer different questions - which decision, and
+does the loop actually reach it.
+
 ## Typed channels
 
 ```csharp

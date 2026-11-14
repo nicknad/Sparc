@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Sparc.Client.Diagnostics;
 using Sparc.Core;
 
 namespace Sparc.Client;
@@ -48,120 +47,30 @@ public sealed class ConsumerSession
         CancellationToken cancellationToken = default,
         IProgress<ConsumerProgress>? progress = null)
     {
-        try
-        {
-            _buffer.Connect(_options.Takeover, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            // Sessions report cancellation as a structured result, never as an
-            // exception (the role was not claimed).
-            return Cancelled();
-        }
+        SessionRunContext context = new(
+            _buffer,
+            _options.Count,
+            _options.PerMessageDelay,
+            _options.WaitMode,
+            _options.Notification,
+            WaitOnDataSignal: true);
+        ConsumerRole role = new(_buffer, _options, _timeProvider, progress);
 
-        // Seed from the stream position of the next slot to read so verification
-        // matches the producer's stream-position stamps even after a restart or
-        // takeover (head == the sequence of the oldest unread message; this
-        // thread is the only consumer, so it cannot move before the first read).
-        ReadState state = new() { Expected = _buffer.HeadSequence };
-        SpinWait spin = new();
-        long idleSince = 0;
-        long cancellationCounter = 0;
-        long idleTimeoutTicks = (long)(_options.IdleTimeout.TotalSeconds * _timeProvider.TimestampFrequency);
-        bool idleTimeoutEnabled = _options.IdleTimeout != Timeout.InfiniteTimeSpan;
-        long pacingTicks = MessagePacer.TicksFor(_timeProvider, _options.PerMessageDelay);
-        long progressInterval = SessionRuntime.ProgressInterval(_options.Count);
-        long runStartTimestamp = _timeProvider.GetTimestamp();
-        SessionStopReason reason = SessionStopReason.Completed;
-
-        while (_options.Count == 0 || state.Received < _options.Count)
-        {
-            int result = ProcessOne(state);
-            if (result == 1)
-            {
-                spin.Reset();
-                idleSince = 0;
-                if (_options.Count == 0 || state.Received < _options.Count)
-                {
-                    // Never pace after the final message: it would inflate the
-                    // run window by one full delay.
-                    MessagePacer.Wait(_timeProvider, runStartTimestamp, state.Received, pacingTicks, cancellationToken);
-                }
-
-                if (progress is not null && progressInterval > 0 && state.Received % progressInterval == 0)
-                {
-                    progress.Report(new ConsumerProgress(
-                        state.Received, state.ReceivedBytes, _timeProvider.GetElapsedTime(runStartTimestamp)));
-                }
-
-                // Paced runs can spend minutes between mask boundaries, so poll
-                // every message once pacing is on; unpaced runs keep the batched
-                // fast-path check.
-                if (SessionRuntime.ShouldCheckCancellation(ref cancellationCounter, pacingTicks)
-                    && cancellationToken.IsCancellationRequested)
-                {
-                    reason = SessionStopReason.Cancelled;
-                    break;
-                }
-
-                continue;
-            }
-
-            if (result == -1)
-            {
-                reason = SessionStopReason.VerificationFailed;
-                break;
-            }
-
-            // Empty: has the producer stopped?
-            RingBufferEndpointState producer = _buffer.ProducerState;
-            if (producer is RingBufferEndpointState.Stopped or RingBufferEndpointState.Faulted)
-            {
-                reason = StopAfterPeerStopped(state, cancellationToken);
-                break;
-            }
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                reason = SessionStopReason.Cancelled;
-                break;
-            }
-
-            long now = _timeProvider.GetTimestamp();
-            if (idleSince == 0)
-            {
-                idleSince = now;
-            }
-            else if (idleTimeoutEnabled && now - idleSince >= idleTimeoutTicks)
-            {
-                reason = SessionStopReason.Timeout;
-                state.Failure =
-                    $"no messages for {_options.IdleTimeout.TotalSeconds:F1}s " +
-                    $"(producer state={producer}, received={state.Received}).";
-                break;
-            }
-
-            SessionRuntime.WaitForNotification(
-                _buffer,
-                _options.WaitMode,
-                _options.Notification,
-                waitOnDataSignal: true,
-                ref spin,
-                cancellationToken);
-        }
-
-        long endTimestamp = _timeProvider.GetTimestamp();
-        TimeSpan elapsed = ComputeElapsed(state, runStartTimestamp, endTimestamp);
-        TimeSpan runElapsed = _timeProvider.GetElapsedTime(runStartTimestamp, endTimestamp);
+        SessionRunOutcome outcome = SessionRunEngine.Run(ref role, in context, _timeProvider, cancellationToken);
 
         _logger.LogDebug(
             "Consumer session finished: received={Received} reason={Reason} elapsed={Elapsed} runElapsed={RunElapsed}",
-            state.Received, reason, elapsed, runElapsed);
+            outcome.Delivered, outcome.Decision.Reason, outcome.StreamElapsed, outcome.RunElapsed);
 
         return new ConsumerRunResult(
-            state.Received, state.ReceivedBytes, elapsed, reason, state.Histogram, state.Failure)
+            outcome.Delivered,
+            role.ReceivedBytes,
+            outcome.StreamElapsed,
+            outcome.Decision.Reason,
+            role.Histogram,
+            outcome.Decision.Message)
         {
-            RunElapsed = runElapsed,
+            RunElapsed = outcome.RunElapsed,
         };
     }
 
@@ -185,165 +94,4 @@ public sealed class ConsumerSession
             _timeProvider,
             timeout,
             cancellationToken);
-
-    /// <summary>
-    /// Reads and verifies one message. Returns 1 when a message was consumed,
-    /// 0 when the buffer is empty, and -1 when verification failed (the reason
-    /// is stored in <c>ReadState.Failure</c>).
-    /// </summary>
-    private int ProcessOne(ReadState state)
-    {
-        // Zero copy: verify and sample straight out of the shared slot; the
-        // producer cannot reuse it until AdvanceRead publishes the new head.
-        if (!_buffer.TryPeek(out ReadOnlySpan<byte> payload, out int length, out int type))
-        {
-            return 0;
-        }
-
-        long now = _timeProvider.GetTimestamp();
-
-        if (_options.Verify)
-        {
-            string? failure = Verify(state, payload, length, type);
-            if (failure is not null)
-            {
-                state.Failure = failure;
-
-                // Consume the invalid message (TryPeek does not advance head) so the
-                // session stops instead of re-reading it.
-                _buffer.AdvanceRead();
-                if (_options.WaitMode == SessionWaitMode.Notification)
-                {
-                    Interlocked.MemoryBarrier();
-                    SessionRuntime.SignalIfPeerWaiting(
-                        _buffer, _options.WaitMode, _options.Notification, signalData: false);
-                }
-
-                return -1;
-            }
-        }
-
-        // Latency sampling is independent of verification: the producer session
-        // always stamps sequence and timestamp, so the sample is valid even when
-        // the caller disabled structural checks.
-        if (_options.IncludeSessionHeader && length >= RingBufferMessage.HeaderSize)
-        {
-            long sentTimestamp = RingBufferMessage.ReadTimestamp(payload);
-            if (sentTimestamp > 0)
-            {
-                state.Histogram.Record(now - sentTimestamp);
-            }
-        }
-
-        _buffer.AdvanceRead();
-
-        // Full fence between our release store (head) and the peer's
-        // waiting-flag load: see ProducerSession for the missed-wakeup race.
-        // Spin modes never set the flag, so they skip the fence entirely.
-        if (_options.WaitMode == SessionWaitMode.Notification)
-        {
-            Interlocked.MemoryBarrier();
-            SessionRuntime.SignalIfPeerWaiting(
-                _buffer, _options.WaitMode, _options.Notification, signalData: false);
-        }
-
-        state.Expected++;
-        state.Received++;
-        state.ReceivedBytes += length;
-        if (state.FirstMessageTimestamp == 0)
-        {
-            state.FirstMessageTimestamp = now;
-        }
-
-        state.LastMessageTimestamp = now;
-        return 1;
-    }
-
-    /// <summary>Returns a failure description, or null when the message is valid.</summary>
-    private string? Verify(ReadState state, ReadOnlySpan<byte> payload, int length, int type)
-    {
-        if (_options.IncludeSessionHeader)
-        {
-            if (length < RingBufferMessage.HeaderSize)
-            {
-                return $"message {state.Received} is only {length} bytes.";
-            }
-
-            long sequence = RingBufferMessage.ReadSequence(payload);
-            if (sequence != state.Expected)
-            {
-                return $"sequence mismatch at message {state.Received}: expected {state.Expected}, received {sequence}.";
-            }
-        }
-
-        if (type != _options.ExpectedType)
-        {
-            return $"message {state.Received} has type {type}, expected {_options.ExpectedType}.";
-        }
-
-        if (_options.IncludeSessionHeader
-            && _options.VerifyPayload
-            && !RingBufferMessage.IsPayloadIntact(payload, length))
-        {
-            return $"message {state.Received} payload is corrupted.";
-        }
-
-        return null;
-    }
-
-    /// <summary>
-    /// Drains messages published before the producer went away and classifies
-    /// the stop reason. Seeing a terminal producer state has acquire semantics,
-    /// so the drain cannot miss messages.
-    /// </summary>
-    private SessionStopReason StopAfterPeerStopped(ReadState state, CancellationToken cancellationToken)
-    {
-        int drain;
-        while ((drain = ProcessOne(state)) == 1)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return SessionStopReason.Cancelled;
-            }
-        }
-
-        if (drain == -1)
-        {
-            return SessionStopReason.VerificationFailed;
-        }
-
-        if (_options.Count > 0 && state.Received < _options.Count)
-        {
-            state.Failure = $"producer stopped after {state.Received} of {_options.Count} messages.";
-            return SessionStopReason.PeerStopped;
-        }
-
-        return SessionStopReason.Completed;
-    }
-
-    private TimeSpan ComputeElapsed(ReadState state, long runStartTimestamp, long endTimestamp) =>
-        state.Received > 1 && state.FirstMessageTimestamp != 0
-            ? _timeProvider.GetElapsedTime(state.FirstMessageTimestamp, state.LastMessageTimestamp)
-            : _timeProvider.GetElapsedTime(runStartTimestamp, endTimestamp);
-
-    private static ConsumerRunResult Cancelled() =>
-        new(0, 0, TimeSpan.Zero, SessionStopReason.Cancelled, new LatencyHistogram(), null);
-
-    /// <summary>Mutable counters for one run, kept out of the main loop body.</summary>
-    private sealed class ReadState
-    {
-        public LatencyHistogram Histogram { get; } = new();
-
-        public long Received { get; set; }
-
-        public long ReceivedBytes { get; set; }
-
-        public long Expected { get; set; }
-
-        public long FirstMessageTimestamp { get; set; }
-
-        public long LastMessageTimestamp { get; set; }
-
-        public string? Failure { get; set; }
-    }
 }

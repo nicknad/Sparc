@@ -209,6 +209,12 @@ with structured outcomes.
 * **Protocol.** Payload layout `[sequence:int64][timestamp:int64][fill...]`,
   `FillByte = 0xA5`. Sequence and timestamp make ordering and one-way latency
   verifiable; the fill makes corruption detectable.
+* **Run engine.** `SessionRunEngine` (internal) owns the skeleton both roles
+  share - connect-cancel shaping, the loop bound, pacing, progress cadence, the
+  cancellation mask, the wait, and the elapsed windows - and is the single
+  caller of `SessionStopDecision.Resolve`. `ProducerRole` and `ConsumerRole`
+  own the message step, their own stall order, the drain, and the outcome
+  fields only they can know.
 * **Producer loop.** Reserve, stamp, fill, commit, pace (`PerMessageDelay`),
   report progress, check cancellation every 65536 messages. When the buffer is
   full it tracks how long it has been full and fails with `Timeout` or
@@ -217,6 +223,13 @@ with structured outcomes.
   gates the O(payload) fill scan), record latency when the timestamp is present,
   advance, pace, report progress. On empty it checks the producer state (drain
   and finish if `Stopped`/`Faulted`) and the idle timeout.
+* **Stop decision.** Every way a run can end - count reached, cancelled, peer
+  gone, timeout, failed verification - is resolved by one pure function
+  (`SessionStopDecision`, internal) into a `SessionStopReason`, its failure text
+  and the count left outstanding. The producer and consumer word their failures
+  differently, but the mapping itself does not branch on the clock, the region
+  or a logger, so the whole table is unit-tested directly rather than through a
+  seeded timeout.
 * **Results.** `ProducerRunResult`/`ConsumerRunResult` carry counts, bytes,
   reasons (`Completed`, `PeerStopped`, `Timeout`, `VerificationFailed`,
   `Cancelled`), the latency histogram, and failure text. `ActiveElapsed` (first
@@ -288,7 +301,9 @@ open path — and released on dispose.
   `Queue<byte[]>` oracle), layout and header validation, region
   create/join/version/geometry/corruption/stale recovery, role conflicts,
   waiting flags, lease state machines, session semantics (timeouts, peer
-  stopped, verification, pacing, wait modes), histogram math, DI registration.
+  stopped, verification, pacing, wait modes), the pure stop-decision table
+  (every terminal event, both roles, bounded and unbounded runs), histogram
+  math, DI registration.
 * `Sparc.ConcurrencyTests` - 10,000,000 messages with sequence + checksum + fill
   verification on every message for both the array and shared-memory buffers, a
   2-slot torture run, and an allocation assertion (< 4 KiB for 1,000,000

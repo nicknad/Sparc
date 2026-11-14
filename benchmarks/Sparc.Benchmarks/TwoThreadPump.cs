@@ -10,7 +10,7 @@ namespace Sparc.Benchmarks;
 /// one endpoint each; the benchmark thread only starts and joins a run, so
 /// thread creation is not part of the measurement.
 /// </summary>
-public abstract class TwoThreadPump : IDisposable
+public abstract class TwoThreadPump : IScenarioPump
 {
     protected const int Capacity = RingBufferLayout.DefaultCapacity;
 

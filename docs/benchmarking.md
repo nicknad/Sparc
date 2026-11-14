@@ -174,19 +174,28 @@ dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --regression --to
 
 What it does:
 
-* Eleven scenarios: copy and lease APIs for the array and shared-memory buffers
+* Twelve scenarios: copy and lease APIs for the array and shared-memory buffers
   at 64 B, 4 KB and 16 KB, the same copy/lease pair over a DACL-secured
   shared-memory region at 64 B (`shared-secured-copy-64`,
-  `shared-secured-lease-64`), plus the typed channel layer at 8 B.
+  `shared-secured-lease-64`), the typed channel layer at 8 B, and the session
+  layer at 64 B (`session-64`).
+* `session-64` drives one `ProducerSession` and one `ConsumerSession` over a
+  shared region for a fixed count and times the pair, so it also pays the
+  session protocol on every message: header stamp, payload fill, sequence and
+  fill verification, latency sampling, and the progress/cancellation cadence.
+  The pump scenarios stop at the endpoint, which is why their numbers are
+  higher.
 * Message counts are chosen so each measured run lasts at least a few hundred
   milliseconds (2M/500k/150k messages).
 * All pumps live for the whole run and rounds interleave scenarios, so host
-  drift affects every scenario equally.
+  drift affects every scenario equally. Region creation is outside the measured
+  window; a fresh session pair per run is the one exception, because a session
+  is a one-shot driver.
 * The metric is **best of 5 runs** (the least-disturbed sample), compared to
   `benchmarks/Sparc.Benchmarks/perf-baseline.json`.
-* The shipped baseline predates the two secured scenarios; until it is
-  re-captured with `--save-baseline`, they are measured and reported as
-  `no baseline` (which passes) side by side with their plain twins.
+* The shipped baseline predates the two secured scenarios and `session-64`;
+  until it is re-captured with `--save-baseline`, they are measured and reported
+  as `no baseline` (which passes) side by side with their covered twins.
 * Default tolerance is 50%; the output explicitly warns that a shared VM can
   swing individual scenarios 2-5x and points at BDN for authoritative numbers.
 
@@ -225,6 +234,10 @@ runtime change, and treat failures on another host as directional.
   `TryConsume`, `RequiredDestinationSize`), add a `ThroughputBenchmarkBase`
   subclass, and optionally add it to the regression matrix in
   `RegressionRunner.cs`.
+* A scenario that drives a whole loop itself (a session pair, a worker) cannot
+  use `TwoThreadPump`, because that base class owns the per-message loop.
+  Implement `IScenarioPump` directly instead and own your threads; `SessionPump`
+  is the worked example.
 * Cross-process scenario: add a flag to `LatencyRunner` and pass it through to
   the producer/consumer argument lists.
 * Keep the invariants from [performance-invariants.md](performance-invariants.md)
