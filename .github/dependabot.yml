@@ -6,9 +6,19 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     groups:
+      # Package versions are declared once in Directory.Packages.props, so an
+      # update moves every project that uses the package together. Grouping the
+      # Roslyn family keeps the analyzer and the projects that load it in
+      # lockstep: bumping one without the other fails the build with CS1705.
+      roslyn:
+        patterns:
+          - "Microsoft.CodeAnalysis.*"
       microsoft-extensions:
         patterns:
           - "Microsoft.Extensions.*"
+      xunit:
+        patterns:
+          - "xunit*"
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

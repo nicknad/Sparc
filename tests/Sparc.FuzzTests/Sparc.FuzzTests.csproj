@@ -12,8 +12,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="xunit.v3" Version="4.0.3" />
-    <PackageReference Include="CsCheck" Version="5.0.1" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="CsCheck" />
   </ItemGroup>
 
   <ItemGroup>
