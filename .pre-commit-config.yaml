@@ -1,0 +1,11 @@
+# Lint GitHub Actions workflow files before they reach CI. One-time setup:
+#   pipx install pre-commit && pre-commit install
+#
+# The docker hook runs the pinned actionlint image, so no local toolchain is
+# needed besides Docker. Swap in "actionlint-system" (actionlint on PATH) or
+# "actionlint" (built from source with Go) if you prefer.
+repos:
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint-docker

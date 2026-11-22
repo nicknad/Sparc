@@ -1,0 +1,49 @@
+<Project>
+
+  <!-- Central Package Management: every package version lives here, once.
+       https://learn.microsoft.com/nuget/consume-packages/central-package-management
+
+       Why this file exists: the analyzer project and the test project that
+       loads it must reference the same Microsoft.CodeAnalysis version. When
+       Dependabot bumped one of them and not the other, the compiler rejected
+       the analyzer with CS1705 and CI went red. With one version here, a
+       Dependabot bump moves every consumer at once. -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!-- Roslyn. Sparc.Analyzers and Sparc.UnitTests both consume Microsoft.CodeAnalysis.CSharp;
+       keep them on one version so the analyzer can always be loaded by the test project. -->
+  <ItemGroup Label="Roslyn">
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="11.0.100" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Analyzers and build tooling">
+    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.340" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="11.0.100" />
+  </ItemGroup>
+
+  <ItemGroup Label="Microsoft.Extensions">
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="11.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="11.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Tests and benchmarks">
+    <PackageVersion Include="xunit.v3" Version="4.0.3" />
+    <PackageVersion Include="CsCheck" Version="5.0.1" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.16.0-preview.2" />
+  </ItemGroup>
+
+  <ItemGroup Label="Serialization and samples">
+    <PackageVersion Include="SerializerFoundation" Version="1.4.1" />
+    <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
+  </ItemGroup>
+
+</Project>
