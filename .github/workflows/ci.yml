@@ -54,7 +54,7 @@ jobs:
       # Keyed on the files that decide package versions, so a bump in
       # Directory.Packages.props or any project file starts a fresh cache.
       - name: "Cache NuGet packages"
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.os == 'Windows' && 'D:\a\.nuget\packages' || '~/.nuget/packages' }}
           key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', 'Directory.Packages.props', '**/*.csproj', '**/*.props') }}
