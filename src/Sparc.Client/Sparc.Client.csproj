@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Sparc.Hosting" />
+    <InternalsVisibleTo Include="Sparc.UnitTests" />
   </ItemGroup>
 
 </Project>

@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Pure session stop-decision table.** `Sparc.Client.SessionStopDecision`
+  (internal) maps every terminal session event - count reached, cancelled, peer
+  stopped, timeout, failed verification - to its stop reason, failure text and
+  outstanding count in one place, with the existing wording preserved
+  byte-for-byte. `SessionStopDecisionTests` exercises it as a table: no region,
+  no clock, no timeout to wait out.
+- **Session run engine.** `SessionRunEngine` (internal) owns the run skeleton
+  both roles used to duplicate - connect-cancel shaping, loop bound, pacing,
+  progress cadence, cancellation mask, wait, and elapsed windows - and is the
+  single caller of `SessionStopDecision.Resolve`. `ProducerRole` and
+  `ConsumerRole` keep the message step, their own stall order, the drain, and
+  the outcome fields only they can know. The decision table is now the
+  production path for every stop reason and failure text, not just a tested
+  specification.
+- **`session-64` regression scenario.** `IScenarioPump` lets the regression
+  harness time a scenario that owns its own loop, and `SessionPump` uses it to
+  measure one producer/consumer session pair over shared memory - the baseline
+  for the session layer, which the endpoint pumps do not cover.
+- **`GLOSSARY.md`.** The project's domain language for regions, the ring
+  protocol and sessions, including the terms this change introduces (session
+  run, stop decision, outstanding).
+
+### Changed
+
+- `TwoThreadPump` now implements `IScenarioPump`; the regression harness holds
+  scenarios through that interface so both shapes can be measured side by side.
+- `ProducerSession.Run` and `ConsumerSession.Run` are now thin adapters over
+  `SessionRunEngine`; their public signatures, result fields and failure text
+  are unchanged.
+
+### Documentation
+
+- `docs/statechart/README.md` gains a session-run and stop-decision statechart
+  derived from the decision table, marked as not yet model-checked.
+- `docs/how-it-works.md` (sessions), `docs/testing.md` (decision-table tests)
+  and `docs/benchmarking.md` (the `session-64` scenario) are updated to match.
+
 ## [2.0.0] - 2026-11-11
 
 ### Added

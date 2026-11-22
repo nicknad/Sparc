@@ -35,8 +35,9 @@ Producer process                          Consumer process
   open, never per message.
 * Reusable session layer (`ProducerSession` / `ConsumerSession`) over role-typed
   endpoints (`SparcRing.OpenProducer` / `OpenConsumer`): `TimeProvider`,
-  `CancellationToken`, `ILogger`, structured stop reasons, explicit crash
-  semantics (at-least-once across consumer crashes, never torn).
+  `CancellationToken`, `ILogger`, structured stop reasons from one pure
+  stop-decision table, explicit crash semantics (at-least-once across consumer
+  crashes, never torn).
 
 See `docs/concept.md` and `docs/how-it-works.md` for guarantees, layout, and handshake.
 

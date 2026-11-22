@@ -7,15 +7,16 @@ namespace Sparc.Benchmarks;
 
 /// <summary>
 /// In-process performance regression check: runs a fixed matrix of two-thread
-/// pumps, compares throughput against a stored baseline and exits non-zero when
-/// a scenario drops below the tolerance.
+/// scenarios, compares throughput against a stored baseline and exits non-zero
+/// when a scenario drops below the tolerance.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The baseline is machine-specific (captured with <c>--save-baseline</c>), so
 /// treat failures on a different host as directional and re-capture. The matrix
 /// covers the copy and lease APIs for the managed array and shared-memory
-/// buffers at 64 B, 4 KB and 16 KB.
+/// buffers at 64 B, 4 KB and 16 KB, the typed channel, and the session layer
+/// (one producer/consumer session pair over shared memory).
 /// </para>
 /// <code>
 /// dotnet run -c Release --project benchmarks/Sparc.Benchmarks -- --regression
@@ -65,11 +66,12 @@ internal static class RegressionRunner
         // Message counts are chosen so each measured run lasts a few hundred
         // milliseconds at minimum: shorter batches on a shared VM are dominated
         // by scheduling noise.
-        (string Name, int Size, int Messages, Func<TwoThreadPump> Create)[] scenarios =
+        (string Name, int Size, int Messages, Func<IScenarioPump> Create)[] scenarios =
         [
             ("array-copy-64", 64, 2_000_000, () => new SpscArrayPump(64)),
             ("array-lease-64", 64, 2_000_000, () => new SpscLeasePump(64)),
             ("channel-8", 8, 2_000_000, () => new SpscChannelPump(8)),
+            ("session-64", 64, 2_000_000, () => new SessionPump(64)),
             ("shared-copy-64", 64, 2_000_000, () => new SpscSharedMemoryPump(64)),
             ("shared-lease-64", 64, 2_000_000, () => SpscSharedMemoryPump.CreateLease(64)),
             ("shared-secured-copy-64", 64, 2_000_000, () => SpscSharedMemoryPump.CreateSecured(64)),
@@ -88,7 +90,7 @@ internal static class RegressionRunner
         // All pumps live for the whole run and rounds interleave the scenarios,
         // so CPU/VM drift affects every scenario the same way instead of
         // biasing whichever one happens to run during a busy period.
-        TwoThreadPump[] pumps = scenarios.Select(s => s.Create()).ToArray();
+        IScenarioPump[] pumps = scenarios.Select(s => s.Create()).ToArray();
         try
         {
             for (int i = 0; i < pumps.Length; i++)
@@ -127,7 +129,7 @@ internal static class RegressionRunner
         }
         finally
         {
-            foreach (TwoThreadPump pump in pumps)
+            foreach (IScenarioPump pump in pumps)
             {
                 pump.Dispose();
             }

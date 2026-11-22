@@ -6,6 +6,10 @@ with TLC, and the `statechart` skill draws the reachable graph as a Mermaid
 statechart. The chart and report below are what the tool writes; the model,
 config, and view beside this file are the source that produces them.
 
+The transport chart is model-checked. The session chart further down is derived
+from the stop-decision table in the code and is not: it is marked as such in its
+own section.
+
 The model is deliberately small: one producer session, one consumer session, one
 slot, and at most two published messages. It keeps the protocol decisions that
 this documentation promises and leaves out the parts that do not change the
@@ -116,6 +120,68 @@ The step the consumer is killed mid-read changes Consumer and Messages at the sa
 TypeOK, CapacityRespected, NothingIsSkipped, NoUnpublishedRead, ReservationNeedsSpace, NoDeadlock
 ```
 
+## Session run and stop decision
+
+Everything above ends at the region. A *session run* starts when a session
+claims its role and ends in exactly one *stop decision*; this chart shows those
+states.
+
+Unlike the transport chart, this one is **not model-checked**: it is read back
+from the decision table in the code (`Sparc.Client.SessionStopDecision`), which
+`SessionRunEngine` calls for every run and which
+`tests/Sparc.UnitTests/SessionStopDecisionTests.cs` asserts as a table. When the
+TLA+ model grows a session module, this section can become tool-generated like
+the one above.
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> Claiming
+  Claiming --> Running: the role is claimed
+  Claiming --> Cancelled: cancelled while claiming
+  Running --> Completed: the requested count is reached
+  Running --> Cancelled: the caller cancels
+  Running --> Timeout: the buffer stays full or empty past its timeout
+  Running --> VerificationFailed: a message fails verification
+  Running --> PeerGone: the peer is gone when the run cannot make progress
+  PeerGone --> Draining: consumer
+  PeerGone --> PeerStopped: producer (unsent messages reported)
+  Draining --> Completed: drain empty and the requested count met
+  Draining --> PeerStopped: drain empty and the requested count short
+  Completed --> [*]
+  Cancelled --> [*]
+  Timeout --> [*]
+  VerificationFailed --> [*]
+  PeerStopped --> [*]
+```
+
+Four things the chart encodes that are easy to get wrong in prose:
+
+* **Peer-gone is observed at the point of no progress.** The producer can only
+  see a dead consumer while the ring is full; the consumer can only see a dead
+  producer while the ring is empty. A run that is still moving has no reason to
+  look.
+* **Only the consumer drains.** A producer that sees its consumer go away stops
+  where it is and reports the unsent messages; a consumer that sees its producer
+  go away keeps reading until the ring is empty, because those messages were
+  already published.
+* **Draining is not a new reason.** A consumer that meets its requested count
+  while draining ends `Completed`, not `PeerStopped`. Only falling short is a
+  peer failure.
+* **A failed message is consumed first.** `VerificationFailed` is reached after
+  the invalid message has been released, so a retry does not see it again. Only
+  the consumer can reach it.
+
+The rules the table asserts:
+
+| Rule | What it says | Asserted by |
+|---|---|---|
+| Totality | Every terminal event resolves to exactly one stop reason. | `EveryTerminalEventResolves` |
+| Text follows the reason | A clean end (`Completed`, `Cancelled`) carries no failure text; every unclean end carries one. | the per-event tests |
+| Outstanding is decided once | `requested - delivered` when a count was requested, otherwise zero. | the count assertions |
+| A drained consumer is clean | Meeting the count while draining is `Completed`, not a peer failure. | `ConsumerPeerStopAfterTheExpectedCountIsClean` |
+| Unbounded runs report progress | With `Count = 0` the text names what was produced or received instead of what was unsent. | the two `WithoutACount` tests |
+
 ## What the model leaves out
 
 The chart shows the transitions, not the mechanisms around them. These are
@@ -137,6 +203,9 @@ covered by [how-it-works.md](../how-it-works.md):
   ([streaming.md](../streaming.md)).
 * **OS transports and access control.** Windows sections, Unix files, and the
   in-memory transport are below the protocol (`how-it-works.md` §8).
+* **Session runs and stop decisions.** The model ends at the region. How a run
+  ends - claim, drain, timeout, verification - is the chart above, derived from
+  the decision table rather than checked here.
 
 ## Regenerate
 

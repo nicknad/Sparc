@@ -4,15 +4,6 @@ namespace Sparc.Client;
 
 internal static class SessionRuntime
 {
-    internal const int ProgressReports = 10;
-    internal const long CancellationCheckMask = 0xFFFF;
-
-    internal static long ProgressInterval(long count) =>
-        count > 0 ? Math.Max(1, count / ProgressReports) : 0;
-
-    internal static bool ShouldCheckCancellation(ref long counter, long pacingTicks) =>
-        pacingTicks > 0 || (++counter & CancellationCheckMask) == 0;
-
     internal static Task<TResult> RunOnDedicatedThread<TResult>(Func<TResult> run) =>
         Task.Factory.StartNew(
             run,
