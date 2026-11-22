@@ -23,7 +23,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Analyzers and build tooling">
-    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.340" />
+    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.341" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="11.0.100" />
   </ItemGroup>
 
